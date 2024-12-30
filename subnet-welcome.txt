@@ -14,8 +14,7 @@ Miners on the Brainlock Subnet are tasked with performing inference on encrypted
 2. Model Flexibility: While VGG9 is the initial focus, as it is easily comparable to SOTA metrics for speed and accuracy, the subnet is designed with the end goal of serving FHE LLM inference.
 3. Optimization: Optimize inference latency and accuracy while adhering to the strict constraints of FHE operations.
 
-Detailed implementation guidelines are provided in our GitHub repository: https://github.com/kingcharlezz/FHE-Subnet/blob/main/FHE/cifar/README.md.
-
+Detailed implementation guidelines are provided in our GitHub repository: https://github.com/brainlock-ai/55
 ---
 
 Validator’s Scoring Methodology
@@ -36,7 +35,7 @@ Scalable Solutions: Expand FHE’s utility to support larger, more complex model
 ---
 
 Important Links
-- GitHub Repo: https://github.com/kingcharlezz/FHE-Subnet/blob/main/FHE/cifar/README.md
+- GitHub Repo: https://github.com/brainlock-ai/55
 
 We look forward to your contributions as we build the future of encrypted machine learning inference. Together, we will redefine data privacy and secure computation.
 
