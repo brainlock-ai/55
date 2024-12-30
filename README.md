@@ -186,13 +186,13 @@ git clone https://github.com/kingcharlezz/FHE-Subnet.git
    DOCKER_IMAGE=cml_client_cifar_10_8_bit ## Keep this the same for now, May change later
    ```
 
-Optional variables:
-   ```bash
-   # Database Configuration -- The values will be generated automatically if they are not specified here
-   POSTGRES_USER=specific_user
-   POSTGRES_PASSWORD=specific_password
-   POSTGRES_DB=miner_data
-   ```
+        Optional variables for validators:
+        ```bash
+        # Database Configuration -- The values will be generated automatically if they are not specified here
+        POSTGRES_USER=specific_user
+        POSTGRES_PASSWORD=specific_password
+        POSTGRES_DB=miner_data
+        ```
 
 ### Step 6: Run Setup Scripts
 
