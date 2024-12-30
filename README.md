@@ -203,7 +203,7 @@ For Miners:
 chmod +x miner_setup.sh
 ./miner_setup.sh
 ```
-> Give this time to run, with the default compilation steps (5000) it may take over 15 minutes to compile
+> Give this time to run, with the default compilation steps (10000) it may take over 30 minutes to compile
 
 For Validators:
 ```bash
