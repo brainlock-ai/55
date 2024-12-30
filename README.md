@@ -233,7 +233,7 @@ After running the setup scripts, your miner or validator should be operational. 
 
 ## Important Links
 
-- **GitHub Repository**: [https://github.com/kingcharlezz/FHE-Subnet/blob/main/FHE/cifar/README.md](https://github.com/kingcharlezz/FHE-Subnet/blob/main/FHE/cifar/README.md)
+- **GitHub Repository**: [https://github.com/brainlock-ai/55/blob/main/FHE/cifar/README.md](https://github.com/kingcharlezz/FHE-Subnet/blob/main/FHE/cifar/README.md)
 
 ---
 

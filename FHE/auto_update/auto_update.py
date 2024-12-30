@@ -52,28 +52,23 @@ class AutoUpdate(threading.Thread):
         """
         Asynchronously fetch the remote version string from GitHub (or any other URL).
         """
-        # Dummy URL for testing - always returns a higher version
-        return "0.0.2"
-        
-        # TODO: Implement proper version checking once repository is public
-        # url = "https://raw.githubusercontent.com/brainlock-ai/55/main/FHE/__init__.py"
-        # try:
-        #     async with aiohttp.ClientSession() as session:
-        #         async with session.get(url, timeout=5) as response:
-        #             response.raise_for_status()
-        #             content = await response.text()
+        url = "https://raw.githubusercontent.com/brainlock-ai/55/main/FHE/__init__.py"
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=5) as response:
+                    response.raise_for_status()
+                    content = await response.text()
 
-        #     # Parse __version__ line from the content
-        #     for line in content.split("\n"):
-        #         if line.startswith("__version__"):
-        #             version_info = line.split("=")[1].strip().strip(" \"'")
-        #             return version_info
+            # Parse __version__ line from the content
+            for line in content.split("\n"):
+                if line.startswith("__version__"):
+                    version_info = line.split("=")[1].strip().strip(" \"'")
+                    return version_info
 
-        #     return None
-
-        # except Exception as e:
-        #     print(f"[Auto-Update] Error fetching remote version: {e}")
-        #     return None
+            return None
+        except Exception as e:
+            print(f"[Auto-Update] Error fetching remote version: {e}")
+            return None
 
     async def check_versions(self):
         remote_version_str = await self.get_remote_version()
