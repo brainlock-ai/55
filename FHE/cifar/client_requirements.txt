@@ -1,0 +1,10 @@
+Pillow
+grequests
+tqdm
+requests
+bittensor
+sqlalchemy
+psycopg2-binary
+concrete-python==2.8.1
+concrete-ml==1.7.0
+requests-toolbelt

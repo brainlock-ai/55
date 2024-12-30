@@ -1,0 +1,10 @@
+torch==1.13.1
+torchvision==0.14.1
+setuptools==69.5.1
+Pillow
+grequests
+numpy<2.0
+tqdm
+requests
+bittensor
+brevitas

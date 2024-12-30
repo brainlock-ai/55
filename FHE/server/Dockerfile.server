@@ -1,0 +1,29 @@
+FROM python:3.9-slim
+
+# Add build argument for hotkey
+ARG MINER_HOTKEY
+ENV MINER_HOTKEY=${MINER_HOTKEY}
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /project
+
+# Configure pip for better reliability
+RUN pip config set global.timeout 1000 && \
+    pip config set global.retries 10
+
+# Install Concrete ML and its dependencies
+RUN python -m pip install --no-cache-dir concrete-ml==1.7.0 concrete-python==2.8.1
+
+COPY dev dev
+COPY server_requirements.txt server_requirements.txt
+COPY server.py server.py
+
+RUN python -m pip install -r ./server_requirements.txt
+
+EXPOSE 5000
+ENTRYPOINT ["python", "server.py"]

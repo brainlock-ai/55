@@ -1,0 +1,43 @@
+
+Welcome to the Brainlock Subnet!
+
+We are excited to have you join us in advancing privacy-preserving computation through Fully Homomorphic Encryption (FHE), enabling encrypted inference on machine learning models with uncompromising security.
+
+PLEASE NOTE: Unlike traditional inference pipelines that require plaintext data, FHE allows for computations to be performed on encrypted data. This ensures that both the input and output remain encrypted, maintaining end-to-end data confidentiality throughout the process. The Brainlock Subnet leverages cutting-edge frameworks like Zama's Concrete-ML to deliver this capability.
+
+---
+
+Task Presented to the Miners
+Miners on the Brainlock Subnet are tasked with performing inference on encrypted data using the VGG9 model—a widely used benchmark in FHE research. Specifically, each miner will:
+
+1. Encrypted Data Processing: Perform inference on data encrypted with FHE using the VGG9 model. Inputs will initially be randomly selected images from a HuggingFace dataset, encrypted using validator-controlled keys. This ensures miners cannot hash or memorize inputs, as the encryption is unique for every request.
+2. Model Flexibility: While VGG9 is the initial focus, as it is easily comparable to SOTA metrics for speed and accuracy, the subnet is designed with the end goal of serving FHE LLM inference.
+3. Optimization: Optimize inference latency and accuracy while adhering to the strict constraints of FHE operations.
+
+Detailed implementation guidelines are provided in our GitHub repository: https://github.com/kingcharlezz/FHE-Subnet/blob/main/FHE/cifar/README.md.
+
+---
+
+Validator’s Scoring Methodology
+Validators evaluate miner performance based on the following metrics:
+
+1. Inference Speed: The latency of encrypted inference, measured in milliseconds per instance.
+2. Output Accuracy: The closeness of the miner's decrypted output to the validator's baseline (computed using a plaintext simulation of FHE operations). For VGG9, direct output comparison suffices; for LLMs, cosine similarity will measure the alignment between the decrypted response and the expected output.
+
+---
+
+Subnet Goal
+
+The primary goal of the Brainlock Subnet is to revolutionize privacy-preserving computation by making Fully Homomorphic Encryption (FHE) more practical and efficient for real-world applications. By incentivizing optimization, the subnet aims to:
+
+Advance FHE Capabilities: Drive improvements in inference speed and accuracy to bridge the gap between encrypted and plaintext computation.
+Enable Privacy-Centric Applications: Empower industries like healthcare, finance, and legal to securely process sensitive data while ensuring regulatory compliance.
+Scalable Solutions: Expand FHE’s utility to support larger, more complex models, including components of Large Language Models (LLMs), to meet evolving computational needs.
+---
+
+Important Links
+- GitHub Repo: https://github.com/kingcharlezz/FHE-Subnet/blob/main/FHE/cifar/README.md
+
+We look forward to your contributions as we build the future of encrypted machine learning inference. Together, we will redefine data privacy and secure computation.
+
+Brainlock Subnet Team

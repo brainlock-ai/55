@@ -1,0 +1,23 @@
+version: '3'
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    network_mode: "host"  # Use host networking
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.enable-lifecycle'
+      - '--web.listen-address=:6970'
+    
+  grafana:
+    image: grafana/grafana
+    network_mode: "host"  # Use host networking
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SERVER_HTTP_PORT=6971
+    depends_on:
+      - prometheus
