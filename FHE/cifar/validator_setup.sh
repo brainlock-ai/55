@@ -53,7 +53,9 @@ PASSWORD_LENGTH=16
 generate_random_string() {
     local length=$1
     local charset=$2
-    tr -dc "$charset" < /dev/urandom | head -c "$length"
+    # Exclude problematic characters like `^`, `<`, `>`, and backticks
+    local safe_charset=$(echo "$charset" | tr -d '^<>`')
+    tr -dc "$safe_charset" < /dev/urandom | head -c "$length"
 }
 
 # Check if .env file exists
