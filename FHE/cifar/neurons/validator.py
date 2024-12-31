@@ -342,7 +342,7 @@ class Validator(BaseNeuron):
         try:
             positive_scores = self.scores.clone()
             positive_scores[positive_scores < 0] = 0
-            sum_of_scores = positive_scores.sum()
+            sum_of_scores = positive_scores.sum() or 1
             self.weights = positive_scores / sum_of_scores
             set_weights = partial(
                 self.subtensor.set_weights,
