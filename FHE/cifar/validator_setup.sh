@@ -65,23 +65,23 @@ fi
 # Check if required variables are set, generate them if not
 if [[ -z "$POSTGRES_USER" ]]; then
     echo "POSTGRES_USER not found. Generating a new username..."
-    POSTGRES_USER=$(generate_random_string "$USERNAME_LENGTH" 'a-zA-Z0-9')
-    # Write to .env file
-    echo "POSTGRES_USER=$POSTGRES_USER" >> .env
+    POSTGRES_USER=$(generate_random_string "$USERNAME_LENGTH")
+    # Write to .env file, ensuring it starts on a new line
+    echo -e "\nPOSTGRES_USER=$POSTGRES_USER" >> .env
 fi
 
 if [[ -z "$POSTGRES_PASSWORD" ]]; then
     echo "POSTGRES_PASSWORD not found. Generating a new password..."
     POSTGRES_PASSWORD=$(generate_random_string "$PASSWORD_LENGTH")
-    # Write to .env file
-    echo "POSTGRES_PASSWORD=$POSTGRES_PASSWORD" >> .env
+    # Write to .env file, ensuring it starts on a new line
+    echo -e "\nPOSTGRES_PASSWORD=$POSTGRES_PASSWORD" >> .env
 fi
 
 if [[ -z "$POSTGRES_DB" ]]; then
     echo "POSTGRES_DB not found. Creating it..."
     POSTGRES_DB="miner_data"
-    # Write to .env file
-    echo "POSTGRES_DB=$POSTGRES_DB" >> .env
+    # Write to .env file, ensuring it starts on a new line
+    echo -e "\nPOSTGRES_DB=$POSTGRES_DB" >> .env
 fi
 
 docker volume create postgres_data
