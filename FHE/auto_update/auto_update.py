@@ -18,7 +18,7 @@ def load_env_file(file_path):
                     os.environ[key] = value
 
 # Load environment variables from .env file
-env_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+env_file_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'cifar', '.env')
 load_env_file(env_file_path)
 
 # Get version from __init__.py
