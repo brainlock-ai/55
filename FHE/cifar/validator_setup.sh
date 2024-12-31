@@ -52,10 +52,8 @@ PASSWORD_LENGTH=16
 # Function to generate random strings
 generate_random_string() {
     local length=$1
-    local charset=$2
-    # Exclude problematic characters like `^`, `<`, `>`, and backticks
-    local safe_charset=$(echo "$charset" | tr -d '^<>`')
-    tr -dc "$safe_charset" < /dev/urandom | head -c "$length"
+    # Use only alphanumeric characters
+    tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c "$length"
 }
 
 # Check if .env file exists
@@ -74,7 +72,7 @@ fi
 
 if [[ -z "$POSTGRES_PASSWORD" ]]; then
     echo "POSTGRES_PASSWORD not found. Generating a new password..."
-    POSTGRES_PASSWORD=$(generate_random_string "$PASSWORD_LENGTH" 'a-zA-Z0-9!@#$%^&*()-_=+')
+    POSTGRES_PASSWORD=$(generate_random_string "$PASSWORD_LENGTH")
     # Write to .env file
     echo "POSTGRES_PASSWORD=$POSTGRES_PASSWORD" >> .env
 fi
