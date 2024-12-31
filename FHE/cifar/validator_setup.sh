@@ -66,26 +66,27 @@ fi
 if [[ -z "$POSTGRES_USER" ]]; then
     echo "POSTGRES_USER not found. Generating a new username..."
     POSTGRES_USER=$(generate_random_string "$USERNAME_LENGTH")
-    # Write to .env file, ensuring it starts on a new line
     echo -e "\nPOSTGRES_USER=$POSTGRES_USER" >> .env
 fi
 
 if [[ -z "$POSTGRES_PASSWORD" ]]; then
     echo "POSTGRES_PASSWORD not found. Generating a new password..."
     POSTGRES_PASSWORD=$(generate_random_string "$PASSWORD_LENGTH")
-    # Write to .env file, ensuring it starts on a new line
     echo -e "\nPOSTGRES_PASSWORD=$POSTGRES_PASSWORD" >> .env
 fi
 
 if [[ -z "$POSTGRES_DB" ]]; then
     echo "POSTGRES_DB not found. Creating it..."
     POSTGRES_DB="miner_data"
-    # Write to .env file, ensuring it starts on a new line
     echo -e "\nPOSTGRES_DB=$POSTGRES_DB" >> .env
 fi
 
+# Before starting PostgreSQL container, add these cleanup lines
+# Add this line to remove the old volume data
+docker volume rm postgres_data 2>/dev/null || true
 docker volume create postgres_data
-docker rm -f postgres_container 2>/dev/null || true
+
+# Start PostgreSQL with the generated user as the superuser
 docker run -d \
     --name postgres_container \
     --restart unless-stopped \
@@ -99,6 +100,14 @@ docker run -d \
 # Wait for PostgreSQL to be ready
 echo "Waiting for PostgreSQL to be ready..."
 sleep 10
+
+# Add these debug lines
+echo "Testing PostgreSQL connection..."
+docker exec postgres_container psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "\l" || {
+    echo "Failed to connect to PostgreSQL. Container logs:"
+    docker logs postgres_container
+    exit 1
+}
 
 docker compose up -d
 
