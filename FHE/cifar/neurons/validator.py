@@ -3,6 +3,7 @@
 # The MIT License (MIT)
 # Copyright ...
 
+from functools import partial
 import random
 import torch
 import bittensor as bt
@@ -339,6 +340,8 @@ class Validator(BaseNeuron):
         Set weights with timeout and retry logic
         """
         try:
+            sum_of_scores = self.scores[self.metagraph.uids].sum()
+            self.weights = self.scores[self.metagraph.uids] / sum_of_scores
             set_weights = partial(
                 self.subtensor.set_weights,
                 wallet=self.wallet,
