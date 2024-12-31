@@ -24,6 +24,9 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.
 sudo -E apt-get update
 sudo -E apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
+sudo systemctl start docker
+sudo systemctl enable docker
+
 # Add user to docker group
 echo "Adding user to docker group..."
 sudo usermod -aG docker $USER
@@ -50,7 +53,9 @@ PASSWORD_LENGTH=16
 generate_random_string() {
     local length=$1
     local charset=$2
-    tr -dc "$charset" < /dev/urandom | head -c "$length"
+    # Exclude problematic characters like `^`, `<`, `>`, and backticks
+    local safe_charset=$(echo "$charset" | tr -d '^<>`')
+    tr -dc "$safe_charset" < /dev/urandom | head -c "$length"
 }
 
 # Check if .env file exists
