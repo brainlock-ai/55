@@ -138,7 +138,6 @@ class EpistulaClient:
             try:
                 async with self.session.get(
                     f"{self.url}/get_client",
-                    # Should we sign a timestamp to make sure a signature can't be reused?
                     headers=self.epistula.generate_headers(b"", signed_for=self.hotkey),
                     ssl=False,
                     timeout=aiohttp.ClientTimeout(total=20)  # Increased timeout
