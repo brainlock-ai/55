@@ -149,7 +149,7 @@ Before starting a miner or validator, you must acquire a slot in the subnet.
 Clone the repository containing the miner and validator code:
 
 ```bash
-git clone https://github.com/kingcharlezz/FHE-Subnet.git
+git clone https://github.com/brainlock-ai/55.git
 ```
 
 ### Step 5: Navigate to Project Directory and Create Environment File
