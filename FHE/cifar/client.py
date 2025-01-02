@@ -140,26 +140,31 @@ class EpistulaClient:
                     f"{self.url}/get_client",
                     headers=self.epistula.generate_headers(b"", signed_for=self.hotkey),
                     ssl=False,
-                    timeout=aiohttp.ClientTimeout(total=20)  # Increased timeout
+                    timeout=aiohttp.ClientTimeout(total=20)
                 ) as response:
                     if response.status != 200:
-                        print(f"Get client request failed with status {response.status}")
-                        return None
+                        error_msg = f"get_client failed with status {response.status}"
+                        print(error_msg)
+                        return {"success": False, "error": error_msg}
 
                     content = await response.read()
                     if not content:
-                        print("Received empty response")
-                        return None
-
-                    with open("./client.zip", "wb") as f:
-                        f.write(content)
+                        error_msg = "empty response from get_client"
+                        print(error_msg)
+                        return {"success": False, "error": error_msg}
 
             except aiohttp.ClientError as e:
-                print(f"Network error during get_client: {e}")
-                return None
+                error_msg = f"Network error during get_client: {e}"
+                print(error_msg)
+                return {"success": False, "error": error_msg}
 
             # Initialize FHE client
-            self.fhe_client = FHEModelClient(path_dir="./", key_dir="./keys")
+            try:
+                self.fhe_client = FHEModelClient(path_dir="./", key_dir="./keys")
+            except Exception as e:
+                error_msg = f"FHE client initialization failed: {str(e)}"
+                print(error_msg)
+                return {"success": False, "error": error_msg}
 
             # Get and upload evaluation keys
             try:
@@ -170,23 +175,27 @@ class EpistulaClient:
                     f"{self.url}/add_key",
                     signed_for=self.hotkey,
                     files={"key": io.BytesIO(eval_keys)},
-                    timeout=20  # Add 20 second timeout for key upload
+                    timeout=20
                 )
                 print("Received response from /add_key endpoint.")
                 try:
                     uid = key_response.json().get("uid")
                     if not uid:
-                        print("Failed to get UID from server response.")
-                        return None
+                        error_msg = "no UID in server response"
+                        print(error_msg)
+                        return {"success": False, "error": error_msg}
                 except json.JSONDecodeError:
-                    print("Server response was not valid JSON.")
-                    return None
+                    error_msg = "invalid JSON in server response"
+                    print(error_msg)
+                    return {"success": False, "error": error_msg}
             except BrokenPipeError:
-                print("Broken pipe occurred while uploading evaluation keys.")
-                return None
+                error_msg = "broken pipe during key upload"
+                print(error_msg)
+                return {"success": False, "error": error_msg}
             except requests.exceptions.RequestException as e:
-                print(f"Request failed: {e}")
-                return None
+                error_msg = f"request failed during key upload: {str(e)}"
+                print(error_msg)
+                return {"success": False, "error": error_msg}
 
             # Select image (random if not specified)
             if image_index is None:

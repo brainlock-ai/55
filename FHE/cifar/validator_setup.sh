@@ -8,6 +8,9 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
+sudo docker system prune --all --force
+sudo docker kill $(docker ps -q)
+
 # Source the .env file
 source .env
 
