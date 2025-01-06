@@ -9,6 +9,9 @@ services:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--web.enable-lifecycle'
       - '--web.listen-address=:6970'
+    ports:
+      - "6970:6970"
+    restart: unless-stopped
     
   grafana:
     image: grafana/grafana
@@ -21,3 +24,4 @@ services:
       - GF_SERVER_HTTP_PORT=6971
     depends_on:
       - prometheus
+    restart: unless-stopped
