@@ -1,5 +1,5 @@
 import torch
-from sqlalchemy import create_engine, Column, String, Float, Integer, Boolean, DateTime
+from sqlalchemy import create_engine, Column, String, Float, Integer, Boolean, DateTime, inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timezone
@@ -7,6 +7,7 @@ import statistics
 import os
 import numpy as np
 
+# Create Base at module level so it can be imported
 Base = declarative_base()
 
 # Define the database model
@@ -17,7 +18,16 @@ class MinerHistory(Base):
     response_time = Column(Float, nullable=False)
     prediction_match = Column(Boolean, nullable=False)
     score = Column(Float, nullable=True)
-    timestamp = Column(DateTime, default=datetime.now(timezone.utc), nullable=False)  # Automatically set to current time
+    timestamp = Column(DateTime, default=datetime.now(timezone.utc), nullable=False)
+
+def create_tables_if_not_exist(engine):
+    """Create tables only if they don't exist."""
+    inspector = inspect(engine)
+    tables = inspector.get_table_names()
+    if 'miner_history' not in tables:
+        Base.metadata.create_all(engine)
+        return True
+    return False
 
 # SimplifiedReward class
 class SimplifiedReward:
@@ -25,10 +35,13 @@ class SimplifiedReward:
     This is a simplified version, where vTrust should be more stable. We will work on
     using a ranging "scale" factor based on the top k % of miner's response times
     """
-    def __init__(self, db_url=f"postgresql://{os.getenv('POSTGRES_USER', 'user')}:{os.getenv('POSTGRES_PASSWORD', 'password')}@localhost:5432/{os.getenv('POSTGRES_DB', 'miner_data')}"):
+    def __init__(self, db_url=None):
+        if db_url is None:
+            db_url = f"postgresql://{os.getenv('POSTGRES_USER', 'user')}:{os.getenv('POSTGRES_PASSWORD', 'password')}@{os.getenv('POSTGRES_HOST', 'localhost')}:{os.getenv('POSTGRES_PORT', '5432')}/{os.getenv('POSTGRES_DB', 'miner_data')}"
+        
         # Set up the database
         self.engine = create_engine(db_url)
-        Base.metadata.create_all(self.engine)
+        create_tables_if_not_exist(self.engine)
         self.Session = sessionmaker(bind=self.engine)
 
         # Thresholds and constants
