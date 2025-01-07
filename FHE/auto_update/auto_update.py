@@ -210,11 +210,11 @@ class AutoUpdate(threading.Thread):
             # Check if remote version is newer
             status = os.getenv("AUTO_UPDATE_STATUS", "IDLE")
             try:
-                if status is "IDLE":
+                if status == "IDLE":
                     should_update = await self.check_versions()
                     if should_update:
                         self.pull_and_restart()
-                elif status is "DOCKER_UPDATE":
+                elif status == "DOCKER_UPDATE":
                     self.update()
             except Exception as e:
                 print(f"[Auto-Update] Unexpected error in check loop: {e}")
