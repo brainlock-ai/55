@@ -135,13 +135,13 @@ Before starting a miner or validator, you must acquire a slot in the subnet.
 - **Register a Miner Wallet**
 
     ```bash
-    btcli subnet register --wallet.name miner --wallet.hotkey miner --subtensor.network finney --netuid 55
+    btcli subnet register --wallet.name miner --wallet.hotkey miner --subtensor.network finney --netuid 54
     ```
 
 - **Register a Validator Wallet**
 
     ```bash
-    btcli subnet register --wallet.name validator --wallet.hotkey validator --subtensor.network finney --netuid 55
+    btcli subnet register --wallet.name validator --wallet.hotkey validator --subtensor.network finney --netuid 54
     ```
 
 ### Step 4: Clone Repository
@@ -149,7 +149,7 @@ Before starting a miner or validator, you must acquire a slot in the subnet.
 Clone the repository containing the miner and validator code:
 
 ```bash
-git clone https://github.com/brainlock-ai/55.git
+git clone https://github.com/brainlock-ai/54.git
 ```
 
 ### Step 5: Navigate to Project Directory and Create Environment File
@@ -167,7 +167,7 @@ git clone https://github.com/brainlock-ai/55.git
    WALLET_NAME=miner          # Your wallet name
    HOTKEY_NAME=miner         # Your hotkey name
    NETWORK=finney           # Network to connect to
-   NETUID=55               # Subnet UID
+   NETUID=54               # Subnet UID
 
    # Miner Configuration
    EXTERNAL_PORT=5000      # Port for FHE inference server, **don't** change unless you've manually changed the docker container server config 
@@ -180,7 +180,7 @@ git clone https://github.com/brainlock-ai/55.git
    WALLET_NAME=validator     # Your wallet name
    HOTKEY_NAME=validator    # Your hotkey name
    NETWORK=finney          # Network to connect to
-   NETUID=55              # Subnet ID
+   NETUID=54              # Subnet ID
 
    # Docker Configuration
    DOCKER_IMAGE=cml_client_cifar_10_8_bit ## Keep this the same for now, May change later
@@ -233,7 +233,7 @@ After running the setup scripts, your miner or validator should be operational. 
 
 ## Important Links
 
-- **GitHub Repository**: https://github.com/brainlock-ai/55/blob/main/FHE/cifar/README.md
+- **GitHub Repository**: https://github.com/brainlock-ai/54/blob/main/FHE/cifar/README.md
 
 ---
 
