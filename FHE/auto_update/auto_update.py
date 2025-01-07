@@ -215,7 +215,7 @@ class AutoUpdate(threading.Thread):
                     if should_update:
                         self.pull_and_restart()
                 elif status is "DOCKER_UPDATE":
-                    self.update()  # Synchronous call that ends in sys.exit(0) if successful
+                    self.update()
             except Exception as e:
                 print(f"[Auto-Update] Unexpected error in check loop: {e}")
 
