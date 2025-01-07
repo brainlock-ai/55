@@ -180,7 +180,7 @@ pip install -r ../auto_update/requirements.txt
 
 # Use pm2 to start your application
 echo "Starting auto-update script with PM2..."
-sudo pm2 start python3 --name "auto_update_sn_54" -- ../auto_update/start_auto_update.py
+sudo pm2 start python3 --name "auto_update_sn_54" --stop-exit-codes 0 -- ../auto_update/start_auto_update.py
 sudo pm2 save
 sudo pm2 startup
 

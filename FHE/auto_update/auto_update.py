@@ -118,11 +118,10 @@ class AutoUpdate(threading.Thread):
     def update(self):
         """
         Perform the update:
-        1. git pull
+        1. Update status environment variable
         2. Rebuild Docker image
         3. Stop and remove existing container
         4. Start new container
-        5. sys.exit(0)
         """
 
         os.environ["AUTO_UPDATE_STATUS"] = "IDLE"
@@ -202,7 +201,6 @@ class AutoUpdate(threading.Thread):
             return
 
         print("[Auto-Update] Update complete! New container is running.")
-        sys.exit(0)
 
     async def main_loop(self):
         """
