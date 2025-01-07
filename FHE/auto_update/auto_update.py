@@ -54,7 +54,7 @@ class AutoUpdate(threading.Thread):
         """
         Asynchronously fetch the remote version string from GitHub (or any other URL).
         """
-        url = "https://raw.githubusercontent.com/brainlock-ai/54/main/FHE/__init__.py"
+        url = "https://raw.githubusercontent.com/brainlock-ai/fhe-subnet/main/FHE/__init__.py"
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=5) as response:
