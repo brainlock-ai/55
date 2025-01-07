@@ -116,6 +116,8 @@ docker compose up -d
 echo "Starting validator container..."
 CONTAINER_ID=$(sudo docker run -d \
     --network=host \
+    --name sn54_validator \
+    --restart unless-stopped \
     -v ~/.bittensor/wallets:/root/.bittensor/wallets \
     -e POSTGRES_USER=${POSTGRES_USER} \
     -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
