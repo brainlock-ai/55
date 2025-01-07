@@ -28,13 +28,11 @@ ENV PYTHONPATH=/project
 COPY client.py .
 COPY epistula.py .
 COPY scoring.py .
-COPY metrics.py .
+COPY postgres_exporter.py .
 COPY client_requirements.txt .
 COPY models/ /project/models/
 COPY neurons/validator.py .
 COPY neurons/neuron.py .
-
-RUN ls -la /project/metrics.py
 
 # Create experiments directory structure
 RUN mkdir -p /project/experiments/CNV_2W2A_2W2A_20221114_131345/checkpoints

@@ -14,12 +14,12 @@ import aiohttp
 import traceback
 import websocket
 from websocket._exceptions import WebSocketConnectionClosedException
-from prometheus_client import start_http_server
 from retry import retry
+import subprocess
+import os
 
 from neuron import BaseNeuron
 from client import EpistulaClient
-# from metrics import metrics
 
 # Constants
 VALIDATOR_MIN_STAKE = 20_000
@@ -29,7 +29,6 @@ EPOCH_LENGTH = 360
 SET_WEIGHTS_EVERY_X_BLOCK = 360
 SCORE_EXPONENTIAL_AVG_COEFF = 0.8
 
-
 class Validator(BaseNeuron):
     """Validator class that extends BaseNeuron."""
 
@@ -37,13 +36,9 @@ class Validator(BaseNeuron):
 
     def __init__(self):
         super().__init__()
-        self.cleanup_socket()  # Add this line before starting Prometheus server
-        # try:
-        #     # Try to start on preferred port
-        #     start_http_server(8091, addr='0.0.0.0')
-        # except OSError:
-        #     # If preferred port fails, try alternative ports
-        #     self.start_metrics_server()
+        
+        # Start the postgres exporter in a separate process
+        self.start_postgres_exporter()
         
         self.connection_timestamp = None
         self.setup_subtensor()
@@ -58,48 +53,18 @@ class Validator(BaseNeuron):
         bt.logging.info("Metagraph initialized and synced")
         self.weights_set_block = self.block
 
-        # Initialize metrics for active miners
-        # self.update_active_miners_metric()
-
-    def cleanup_socket(self):
-        """Cleanup any existing socket connections."""
-        import socket
-        import contextlib
-        import psutil
-        
-        # Kill any process using port 8091
-        for proc in psutil.process_iter(['pid', 'name']):
-            try:
-                for conn in proc.connections('inet'):  # Specify connection kind
-                    if hasattr(conn, 'laddr') and conn.laddr.port == 8091:
-                        try:
-                            proc.kill()
-                            bt.logging.info(f"Killed process {proc.pid} using port 8091")
-                        except (psutil.NoSuchProcess, psutil.AccessDenied):
-                            continue
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                continue
-        
-        # Try to create a socket with SO_REUSEADDR
-        with contextlib.suppress(Exception):
-            temp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            temp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            temp_socket.bind(('0.0.0.0', 8091))
-            temp_socket.close()
-            bt.logging.info("Successfully cleaned up socket on port 8091")
-
-    # def start_metrics_server(self, start_port=8091, max_attempts=10):
-    #     """Start Prometheus metrics server with fallback ports."""
-    #     for port in range(start_port, start_port + max_attempts):
-    #         try:
-    #             start_http_server(port, addr='0.0.0.0')
-    #             bt.logging.info(f"Metrics server started on port {port}")
-    #             return
-    #         except OSError:
-    #             if port == start_port + max_attempts - 1:
-    #                 bt.logging.error(f"Could not find available port in range {start_port}-{port}")
-    #                 raise
-    #             continue
+    def start_postgres_exporter(self):
+        """Start the Postgres exporter in a separate process."""
+        try:
+            # Get the directory of the current file
+            current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            exporter_path = os.path.join(current_dir, 'postgres_exporter.py')
+            
+            # Start the exporter as a separate process
+            subprocess.Popen(['python', '/project/postgres_exporter.py'])
+            bt.logging.info("Started Postgres exporter")
+        except Exception as e:
+            bt.logging.error(f"Failed to start Postgres exporter: {str(e)}")
 
     def setup_subtensor(self):
         """Initialize subtensor connection with retry logic."""
@@ -266,11 +231,6 @@ class Validator(BaseNeuron):
                     task = asyncio.create_task(miner_client.query())
                     tasks.append((uid, task, start_time, hotkey))
                 except Exception as e:
-                    # try:
-                    #     # Use the correct label name 'status' and include hotkey
-                    #     metrics.validation_requests.labels(status='failure', hotkey=str(axon.hotkey)).inc()
-                    # except Exception as metric_error:
-                    #     bt.logging.error(f"Error updating metrics: {metric_error}")
                     bt.logging.debug(f"Failed to create task for miner {uid}: {str(e)}")
                     continue
             
@@ -283,33 +243,38 @@ class Validator(BaseNeuron):
                     result = await asyncio.wait_for(task, timeout=120)
                     duration = time.time() - start_time
                     
-                    if result is not None:
-                        # try:
-                        #     # Record validation attempt first
-                        #     metrics.record_validation_attempt(hotkey, True, duration)
+                    if result is not None and isinstance(result, dict):
+                        try:
+                            # Only process valid responses that have all required fields
+                            is_valid = (
+                                result.get('success', False) and  # Must be explicitly successful
+                                isinstance(result.get('score'), (int, float)) and  # Must have a numeric score
+                                result.get('score') >= 0 and  # Score must be non-negative
+                                isinstance(result.get('stats'), dict) and  # Must have stats dictionary
+                                duration > 0  # Must have non-zero duration
+                            )
                             
-                        #     # Extract score and stats from the result
-                        #     score = result.get('score', 0)
-                        #     stats = result.get('stats', {})
+                            if is_valid:
+                                # Extract score and stats from the result
+                                score = result.get('score', 0)
+                                stats = result.get('stats', {})
+                                predictions_match = stats.get('predictions_match', True)
+                                
+                                # Note: Database recording is handled by SimplifiedReward in scoring.py
+                                bt.logging.debug(f"Recorded successful validation for miner {uid} with duration {duration:.2f}s")
+                            else:
+                                if duration <= 0:
+                                    bt.logging.debug(f"Skipping record for miner {uid} due to zero/negative duration: {duration}")
+                                else:
+                                    bt.logging.debug(f"Invalid response format from miner {uid}: {result}")
                             
-                        #     # Update miner metrics with stats from the client
-                        #     metrics.update_miner_metrics(hotkey, score, stats)
-                            
-                        # except Exception as metric_error:
-                        #     bt.logging.error(f"Error updating metrics: {str(metric_error)}")
+                        except Exception as db_error:
+                            bt.logging.error(f"Error recording validation in database for miner {uid}: {str(db_error)}")
                         
                         results.append((uid, result))
                     else:
-                        # try:
-                        #     metrics.record_validation_attempt(hotkey, False, duration)
-                        # except Exception as metric_error:
-                        #     bt.logging.error(f"Error updating metrics: {str(metric_error)}")
-                        bt.logging.debug(f"Null result from miner {uid}")
+                        bt.logging.debug(f"Null or invalid result type from miner {uid}: {type(result)}")
                 except Exception as e:
-                    # try:
-                    #     metrics.record_validation_attempt(hotkey, False, 0.0)
-                    # except Exception as metric_error:
-                    #     bt.logging.error(f"Error updating metrics: {metric_error}")
                     bt.logging.debug(f"Task failed for miner {uid}: {type(e).__name__}: {str(e)}")
                     results.append((uid, None))
 
@@ -365,32 +330,12 @@ class Validator(BaseNeuron):
         except Exception as e:
             return None, str(e)
 
-    # def update_active_miners_metric(self):
-    #     """Update the active miners metric."""
-    #     try:
-    #         # Count miners that have valid axons (non-zero IP) and are below validator stake threshold
-    #         active_count = len([
-    #             uid for uid in range(self.metagraph.n.item())
-    #             if (
-    #                 self.metagraph.axons[uid].ip != "0.0.0.0" and 
-    #                 self.metagraph.total_stake[uid] < VALIDATOR_MIN_STAKE
-    #             )
-    #         ])
-    #         metrics.active_miners.set(active_count)
-    #         bt.logging.info(f"Active miners metric updated: {active_count}")
-    #     except Exception as e:
-    #         bt.logging.error(f"Error updating active miners metric: {str(e)}")
-    #         metrics.active_miners.set(0)  # Set to 0 on error
-
     def run(self):
         """Main validation loop."""
         bt.logging.info("Starting validator loop.")
         
         while True:
             try:
-                # Update active miners metric
-                # self.update_active_miners_metric()
-                
                 # Add metagraph sync check
                 if self.should_resync_metagraph():
                     self.resync_metagraph()

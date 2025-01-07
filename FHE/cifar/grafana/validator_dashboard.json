@@ -11,7 +11,8 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "prometheus",
+        "url": "http://localhost:6970"
       },
       "fieldConfig": {
         "defaults": {
@@ -104,7 +105,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.5, sum(rate(validator_validation_latency_seconds_bucket[5m])) by (le, hotkey))",
+          "expr": "validator_miner_response_time_median",
           "format": "table",
           "instant": true,
           "legendFormat": "Response Time Median",
@@ -115,7 +116,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "avg(validator_miner_response_time{}) by (hotkey)",
+          "expr": "validator_miner_response_time_mean",
           "format": "table",
           "instant": true,
           "legendFormat": "Response Time Mean",
@@ -126,7 +127,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "validator_miner_scores{}",
+          "expr": "validator_miner_scores",
           "format": "table",
           "instant": true,
           "legendFormat": "Current Score",
@@ -137,7 +138,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "validator_prediction_accuracy{}",
+          "expr": "validator_prediction_accuracy",
           "format": "table",
           "instant": true,
           "legendFormat": "Prediction Accuracy",
@@ -148,11 +149,22 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(validator_validation_requests_total{status='success'}) by (hotkey) / sum(validator_validation_requests_total{}) by (hotkey)",
+          "expr": "validator_miner_failure_rate",
           "format": "table",
           "instant": true,
-          "legendFormat": "Success Rate",
+          "legendFormat": "Failure Rate",
           "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "validator_miner_response_time_std",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "Response Time Std Dev",
+          "refId": "F"
         }
       ],
       "title": "Miner Performance Metrics",
@@ -184,6 +196,10 @@
               "Value #E": {
                 "aggregations": ["lastNotNull"],
                 "operation": "aggregate"
+              },
+              "Value #F": {
+                "aggregations": ["lastNotNull"],
+                "operation": "aggregate"
               }
             }
           }
@@ -198,7 +214,8 @@
               "Value #B (lastNotNull)": "Response Time Mean",
               "Value #C (lastNotNull)": "Current Score",
               "Value #D (lastNotNull)": "Prediction Accuracy",
-              "Value #E (lastNotNull)": "Success Rate",
+              "Value #E (lastNotNull)": "Failure Rate",
+              "Value #F (lastNotNull)": "Response Time Std Dev",
               "hotkey": "Hotkey"
             }
           }

@@ -21,7 +21,6 @@ import aiohttp
 import asyncio
 import requests
 import traceback
-
 import bittensor as bt
 from pathlib import Path
 from models import cnv_2w2a
