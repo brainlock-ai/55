@@ -30,6 +30,8 @@ with open(init_path) as f:
             print(f"[Auto-Update] Current version: {__version__}")
             break
 
+repo_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 class AutoUpdate(threading.Thread):
     def __init__(self, container_image="cml_client_cifar_10_8_bit", check_interval=600):
         """
@@ -52,7 +54,7 @@ class AutoUpdate(threading.Thread):
         """
         Asynchronously fetch the remote version string from GitHub (or any other URL).
         """
-        url = "https://raw.githubusercontent.com/brainlock-ai/55/main/FHE/__init__.py"
+        url = "https://raw.githubusercontent.com/brainlock-ai/54/main/FHE/__init__.py"
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=5) as response:
@@ -83,17 +85,12 @@ class AutoUpdate(threading.Thread):
         )
 
         return remote_version_obj > local_version_obj
-
-    def update(self):
+    
+    def pull_and_restart(self):
         """
-        Perform the update:
-        1. git pull
-        2. Rebuild Docker image
-        3. Stop and remove existing container
-        4. Start new container
-        5. sys.exit(0)
+        Updates the status environment variable, git pulls and restarts the current pm2 process
         """
-        repo_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        os.environ["AUTO_UPDATE_STATUS"] = "DOCKER_UPDATE"
 
         print("[Auto-Update] Pulling latest changes from GitHub...")
         try:
@@ -106,6 +103,29 @@ class AutoUpdate(threading.Thread):
                 pass
             print(f"[Auto-Update] Error during 'git pull': {e}")
             return
+
+        print("[Auto-Update] Updating Auto-Update script requirements...")
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install", "-r", "requirements.txt"
+        ], cwd=repo_dir)
+
+        print("[Auto-Update] Restarting Auto-Update script...")
+
+        subprocess.check_call(["pm2", "restart", "auto_update_sn_54", "--update-env"])
+
+        sys.exit(0)
+
+    def update(self):
+        """
+        Perform the update:
+        1. git pull
+        2. Rebuild Docker image
+        3. Stop and remove existing container
+        4. Start new container
+        5. sys.exit(0)
+        """
+
+        os.environ["AUTO_UPDATE_STATUS"] = "IDLE"
 
         print("[Auto-Update] Rebuilding Docker image...")
         try:
@@ -190,9 +210,13 @@ class AutoUpdate(threading.Thread):
         """
         while True:
             # Check if remote version is newer
+            status = os.getenv("AUTO_UPDATE_STATUS", "IDLE")
             try:
-                should_update = await self.check_versions()
-                if should_update:
+                if status is "IDLE":
+                    should_update = await self.check_versions()
+                    if should_update:
+                        self.pull_and_restart()
+                elif status is "DOCKER_UPDATE":
                     self.update()  # Synchronous call that ends in sys.exit(0) if successful
             except Exception as e:
                 print(f"[Auto-Update] Unexpected error in check loop: {e}")
