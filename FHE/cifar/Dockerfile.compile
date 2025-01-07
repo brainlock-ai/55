@@ -12,14 +12,17 @@ WORKDIR /project
 RUN pip config set global.timeout 1000 && \
     pip config set global.retries 10
 
-# Update pip
-RUN python -m pip install --upgrade pip
-# Install Concrete ML and its dependencies
-RUN python -m pip install --no-cache-dir concrete-ml==1.7.0 concrete-python==2.8.1
 
 COPY requirements.txt requirements.txt
 RUN python -m pip install -r requirements.txt
 RUN python -m pip install requests
+
+# Update pip
+RUN python -m pip install --upgrade pip
+# Install Concrete ML and its dependencies
+RUN python -m pip install --no-cache-dir concrete-ml==1.7.0 concrete-python==2.8.1
+RUN pip install torch==1.13.1+cpu torchvision==0.14.1+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
+
 
 COPY models/ models/
 COPY experiments/ experiments/
