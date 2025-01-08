@@ -179,17 +179,18 @@ class PostgresExporter:
         except Exception as e:
             logger.error(f"Error collecting metrics: {str(e)}")
 
+    def run_metrics_loop(self):
+        """Run the metrics collection loop."""
+        while True:
+            try:
+                self.collect_metrics()
+            except Exception as e:
+                logger.error(f"Error in metrics loop: {str(e)}")
+            time.sleep(15)
+
 def main():
     exporter = PostgresExporter()
-    
-    while True:
-        try:
-            exporter.collect_metrics()
-        except Exception as e:
-            logger.error(f"Error in main loop: {str(e)}")
-        
-        # Sleep for 15 seconds before next collection
-        time.sleep(15)
+    exporter.run_metrics_loop()
 
 if __name__ == "__main__":
     main() 

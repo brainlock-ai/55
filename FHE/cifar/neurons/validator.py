@@ -15,8 +15,8 @@ import traceback
 import websocket
 from websocket._exceptions import WebSocketConnectionClosedException
 from retry import retry
-import subprocess
-import os
+import threading
+from postgres_exporter import PostgresExporter
 
 from neuron import BaseNeuron
 from client import EpistulaClient
@@ -37,9 +37,6 @@ class Validator(BaseNeuron):
     def __init__(self):
         super().__init__()
         
-        # Start the postgres exporter in a separate process
-        self.start_postgres_exporter()
-        
         self.connection_timestamp = None
         self.setup_subtensor()
         self.scores = torch.zeros(256, dtype=torch.float32)
@@ -53,18 +50,8 @@ class Validator(BaseNeuron):
         bt.logging.info("Metagraph initialized and synced")
         self.weights_set_block = self.block
 
-    def start_postgres_exporter(self):
-        """Start the Postgres exporter in a separate process."""
-        try:
-            # Get the directory of the current file
-            current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            exporter_path = os.path.join(current_dir, 'postgres_exporter.py')
-            
-            # Start the exporter as a separate process
-            subprocess.Popen(['python', '/project/postgres_exporter.py'])
-            bt.logging.info("Started Postgres exporter")
-        except Exception as e:
-            bt.logging.error(f"Failed to start Postgres exporter: {str(e)}")
+        # Start postgres exporter in a separate thread
+        self.start_postgres_exporter()
 
     def setup_subtensor(self):
         """Initialize subtensor connection with retry logic."""
@@ -408,6 +395,19 @@ class Validator(BaseNeuron):
                 self.subtensor.close()
         except Exception as e:
             bt.logging.error(f"Error closing subtensor connection: {str(e)}")
+
+    def start_postgres_exporter(self):
+        """Start the Postgres exporter in a separate thread."""
+        try:
+            exporter = PostgresExporter()
+            self.exporter_thread = threading.Thread(
+                target=exporter.run_metrics_loop,
+                daemon=True  # This ensures the thread stops when the main program stops
+            )
+            self.exporter_thread.start()
+            bt.logging.info("Started Postgres exporter thread")
+        except Exception as e:
+            bt.logging.error(f"Failed to start Postgres exporter: {str(e)}")
 
 
 if __name__ == "__main__":
