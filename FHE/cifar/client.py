@@ -130,10 +130,10 @@ class EpistulaClient:
             # Cleanup any existing files
             self._cleanup_files()
 
-            print(f"Connected to server at {self.url}")
+            bt.logging.debug(f"Connected to server at {self.url}")
 
             # Get client.zip using aiohttp with improved error handling
-            print("Requesting client.zip...")
+            bt.logging.debug("Requesting client.zip...")
             try:
                 async with self.session.get(
                     f"{self.url}/get_client",
@@ -142,19 +142,19 @@ class EpistulaClient:
                     timeout=aiohttp.ClientTimeout(total=20)  # Increased timeout
                 ) as response:
                     if response.status != 200:
-                        print(f"Get client request failed with status {response.status}")
+                        bt.logging.debug(f"Get client request failed with status {response.status}")
                         return None
 
                     content = await response.read()
                     if not content:
-                        print("Received empty response")
+                        bt.logging.debug("Received empty response")
                         return None
 
                     with open("./client.zip", "wb") as f:
                         f.write(content)
 
             except aiohttp.ClientError as e:
-                print(f"Network error during get_client: {e}")
+                bt.logging.debug(f"Network error during get_client: {e}")
                 return None
 
             # Initialize FHE client
@@ -163,7 +163,7 @@ class EpistulaClient:
             # Get and upload evaluation keys
             try:
                 eval_keys = self.fhe_client.get_serialized_evaluation_keys()
-                print("Sending evaluation keys to /add_key endpoint...")
+                bt.logging.debug("Sending evaluation keys to /add_key endpoint...")
                 key_response = self.epistula.request(
                     'POST',
                     f"{self.url}/add_key",
@@ -171,20 +171,20 @@ class EpistulaClient:
                     files={"key": io.BytesIO(eval_keys)},
                     timeout=20  # Add 20 second timeout for key upload
                 )
-                print("Received response from /add_key endpoint.")
+                bt.logging.debug("Received response from /add_key endpoint.")
                 try:
                     uid = key_response.json().get("uid")
                     if not uid:
-                        print("Failed to get UID from server response.")
+                        bt.logging.debug("Failed to get UID from server response.")
                         return None
                 except json.JSONDecodeError:
-                    print("Server response was not valid JSON.")
+                    bt.logging.debug("Server response was not valid JSON.")
                     return None
             except BrokenPipeError:
-                print("Broken pipe occurred while uploading evaluation keys.")
+                bt.logging.debug("Broken pipe occurred while uploading evaluation keys.")
                 return None
             except requests.exceptions.RequestException as e:
-                print(f"Request failed: {e}")
+                bt.logging.debug(f"Request failed: {e}")
                 return None
 
             # Select image (random if not specified)
@@ -195,7 +195,7 @@ class EpistulaClient:
 
             # Generate random seed for this query
             augmentation_seed = random.randint(0, 2**32 - 1)
-            print(f"\nUsing augmentation seed: {augmentation_seed}")
+            bt.logging.debug(f"\nUsing augmentation seed: {augmentation_seed}")
 
             # Apply augmentation once
             torch.manual_seed(augmentation_seed)
