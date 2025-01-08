@@ -17,6 +17,9 @@ from websocket._exceptions import WebSocketConnectionClosedException
 from retry import retry
 import threading
 from postgres_exporter import PostgresExporter
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+import os
 
 from neuron import BaseNeuron
 from client import EpistulaClient
@@ -41,6 +44,11 @@ class Validator(BaseNeuron):
         self.setup_subtensor()
         self.scores = torch.zeros(256, dtype=torch.float32)
         self.weights = torch.zeros(256, dtype=torch.float32)
+        
+        # Initialize database connection
+        db_url = f"postgresql://{os.getenv('POSTGRES_USER', 'user')}:{os.getenv('POSTGRES_PASSWORD', 'password')}@{os.getenv('POSTGRES_HOST', 'localhost')}:{os.getenv('POSTGRES_PORT', '5432')}/{os.getenv('POSTGRES_DB', 'miner_data')}"
+        self.engine = create_engine(db_url)
+        self.Session = sessionmaker(bind=self.engine)
         
         # Initialize metagraph
         bt.logging.info("Initializing metagraph...")
@@ -193,10 +201,43 @@ class Validator(BaseNeuron):
 
         return batched_uids
 
+    def get_miner_scores(self):
+        """Get latest scores for all miners from PostgreSQL."""
+        try:
+            session = self.Session()
+            query = text("""
+                WITH latest_scores AS (
+                    SELECT hotkey, score,
+                           ROW_NUMBER() OVER (PARTITION BY hotkey ORDER BY timestamp DESC) as rn
+                    FROM miner_history
+                    WHERE score IS NOT NULL
+                )
+                SELECT hotkey, score
+                FROM latest_scores
+                WHERE rn = 1;
+            """)
+            results = session.execute(query)
+            
+            # Reset scores tensor
+            self.scores = torch.zeros(256, dtype=torch.float32)
+            
+            # Update scores from database
+            for hotkey, score in results:
+                try:
+                    # Find the UID for this hotkey
+                    if hotkey in self.metagraph.hotkeys:
+                        uid = self.metagraph.hotkeys.index(hotkey)
+                        self.scores[uid] = score
+                        bt.logging.info(f"Updated score for miner {uid} (hotkey: {hotkey}): {score:.6f}")
+                except ValueError:
+                    continue
+                    
+            session.close()
+        except Exception as e:
+            bt.logging.error(f"Error querying miner scores: {str(e)}")
+
     async def run_concurrent_validations(self, batched_uids, miner_inputs):
         """Run multiple validations concurrently using aiohttp."""
-        # TODO switch to httpx
-
         async with aiohttp.ClientSession(
             connector=aiohttp.TCPConnector(force_close=True, limit=100, enable_cleanup_closed=True),
             timeout=aiohttp.ClientTimeout(total=120)
@@ -218,7 +259,7 @@ class Validator(BaseNeuron):
                     task = asyncio.create_task(miner_client.query())
                     tasks.append((uid, task, start_time, hotkey))
                 except Exception as e:
-                    bt.logging.debug(f"Failed to create task for miner {uid}: {str(e)}")
+                    bt.logging.info(f"Failed to create task for miner {uid}: {str(e)}")
                     continue
             
             if not tasks:
@@ -235,34 +276,40 @@ class Validator(BaseNeuron):
                             # Only process valid responses that have all required fields
                             is_valid = (
                                 result.get('success', False) and  # Must be explicitly successful
-                                isinstance(result.get('score'), (int, float)) and  # Must have a numeric score
-                                result.get('score') >= 0 and  # Score must be non-negative
+                                (
+                                    # Handle both direct score and score_stats tuple
+                                    (isinstance(result.get('score'), (int, float)) and result.get('score') >= 0) or
+                                    (isinstance(result.get('score_stats'), tuple) and all(isinstance(x, (int, float)) for x in result.get('score_stats')))
+                                ) and
                                 isinstance(result.get('stats'), dict) and  # Must have stats dictionary
                                 duration > 0  # Must have non-zero duration
                             )
                             
                             if is_valid:
                                 # Extract score and stats from the result
-                                score = result.get('score', 0)
+                                if 'score_stats' in result:
+                                    score_stats = result.get('score_stats')
+                                    mean, median, std = score_stats
+                                    bt.logging.info(f"Score stats for miner {uid} - Mean: {mean:.6f}, Median: {median:.6f}, Std: {std:.6f}")
+                                
                                 stats = result.get('stats', {})
                                 predictions_match = stats.get('predictions_match', True)
                                 
-                                # Note: Database recording is handled by SimplifiedReward in scoring.py
-                                bt.logging.debug(f"Recorded successful validation for miner {uid} with duration {duration:.2f}s")
+                                bt.logging.info(f"Recorded validation for miner {uid} with duration {duration:.2f}s")
                             else:
                                 if duration <= 0:
-                                    bt.logging.debug(f"Skipping record for miner {uid} due to zero/negative duration: {duration}")
+                                    bt.logging.info(f"Skipping record for miner {uid} due to zero/negative duration: {duration}")
                                 else:
-                                    bt.logging.debug(f"Invalid response format from miner {uid}: {result}")
+                                    bt.logging.info(f"Invalid response format from miner {uid}: {result}")
                             
                         except Exception as db_error:
                             bt.logging.error(f"Error recording validation in database for miner {uid}: {str(db_error)}")
                         
                         results.append((uid, result))
                     else:
-                        bt.logging.debug(f"Null or invalid result type from miner {uid}: {type(result)}")
+                        bt.logging.info(f"Null or invalid result type from miner {uid}: {type(result)}")
                 except Exception as e:
-                    bt.logging.debug(f"Task failed for miner {uid}: {type(e).__name__}: {str(e)}")
+                    bt.logging.info(f"Task failed for miner {uid}: {type(e).__name__}: {str(e)}")
                     results.append((uid, None))
 
             return results
@@ -332,6 +379,9 @@ class Validator(BaseNeuron):
                     bt.logging.info("Refreshing subtensor connection...")
                     self.setup_subtensor()
 
+                # Get latest scores from PostgreSQL
+                self.get_miner_scores()
+
                 # Create new event loop for each iteration
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
@@ -360,9 +410,9 @@ class Validator(BaseNeuron):
                         if results:
                             successful_validations = sum(1 for _, r in results if r is not None)
                             bt.logging.info(f"Completed batch with {successful_validations}/{len(batched_uids)} successful validations")
-                            zipped_scores = zip(batched_uids, [r["score"] for _, r in results if r is not None])
-                            for uid, score in zipped_scores:
-                                self.scores[uid] = self.scores[uid] * SCORE_EXPONENTIAL_AVG_COEFF + (1 - SCORE_EXPONENTIAL_AVG_COEFF) * score
+                            
+                            # Update scores from database after validations
+                            self.get_miner_scores()
                 
                     # Add delay between validation rounds
                     time.sleep(5)

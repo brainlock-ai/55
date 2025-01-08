@@ -158,23 +158,32 @@ class PostgresExporter:
                 for row in results:
                     hotkey = row.hotkey
                     
-                    # Update all metrics for this miner
-                    self.miner_scores.labels(hotkey=hotkey).set(row.latest_score)
-                    self.prediction_accuracy.labels(hotkey=hotkey).set(row.prediction_accuracy)
-                    self.miner_response_time.labels(hotkey=hotkey).set(row.latest_response_time)
-                    self.miner_avg_score.labels(hotkey=hotkey).set(row.avg_score)
-                    self.response_time_mean.labels(hotkey=hotkey).set(row.avg_response_time)
-                    self.response_time_std.labels(hotkey=hotkey).set(row.std_response_time)
-                    self.response_time_median.labels(hotkey=hotkey).set(row.median_response_time)
-                    self.failure_rate.labels(hotkey=hotkey).set(row.failure_rate)
+                    # Update all metrics for this miner with NULL checks
+                    if row.latest_score is not None:
+                        self.miner_scores.labels(hotkey=hotkey).set(row.latest_score)
+                    if row.prediction_accuracy is not None:
+                        self.prediction_accuracy.labels(hotkey=hotkey).set(row.prediction_accuracy)
+                    if row.latest_response_time is not None:
+                        self.miner_response_time.labels(hotkey=hotkey).set(row.latest_response_time)
+                    if row.avg_score is not None:
+                        self.miner_avg_score.labels(hotkey=hotkey).set(row.avg_score)
+                    if row.avg_response_time is not None:
+                        self.response_time_mean.labels(hotkey=hotkey).set(row.avg_response_time)
+                    if row.std_response_time is not None:
+                        self.response_time_std.labels(hotkey=hotkey).set(row.std_response_time)
+                    if row.median_response_time is not None:
+                        self.response_time_median.labels(hotkey=hotkey).set(row.median_response_time)
+                    if row.failure_rate is not None:
+                        self.failure_rate.labels(hotkey=hotkey).set(row.failure_rate)
                     
-                    # Update request counters
-                    success_count = int(row.total_requests * row.prediction_accuracy)
-                    failure_count = row.total_requests - success_count
-                    
-                    # Set the counter values directly
-                    self.validation_requests.labels(status='success', hotkey=hotkey)._value.set(success_count)
-                    self.validation_requests.labels(status='failure', hotkey=hotkey)._value.set(failure_count)
+                    # Update request counters only if we have valid counts
+                    if row.total_requests is not None and row.prediction_accuracy is not None:
+                        success_count = int(row.total_requests * row.prediction_accuracy)
+                        failure_count = row.total_requests - success_count
+                        
+                        # Set the counter values directly
+                        self.validation_requests.labels(status='success', hotkey=hotkey)._value.set(success_count)
+                        self.validation_requests.labels(status='failure', hotkey=hotkey)._value.set(failure_count)
 
         except Exception as e:
             logger.error(f"Error collecting metrics: {str(e)}")

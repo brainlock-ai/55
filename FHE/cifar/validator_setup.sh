@@ -82,6 +82,12 @@ if [[ -z "$POSTGRES_DB" ]]; then
     echo -e "\nPOSTGRES_DB=$POSTGRES_DB" >> .env
 fi
 
+if [[ -z "$POSTGRES_PORT" ]]; then
+    echo "POSTGRES_PORT not found. Setting default port..."
+    POSTGRES_PORT="5432"
+    echo -e "\nPOSTGRES_PORT=$POSTGRES_PORT" >> .env
+fi
+
 # Before starting PostgreSQL container, add these cleanup lines
 # Add this line to remove the old volume data
 docker volume rm postgres_data 2>/dev/null || true
@@ -97,7 +103,7 @@ docker run -d \
     -e POSTGRES_DB=${POSTGRES_DB} \
     -v postgres_data:/var/lib/postgresql/data \
     postgres:14 \
-    -c "port=${POSTGRES_PORT}"
+    postgres -c "port=${POSTGRES_PORT}"
 
 # Wait for PostgreSQL to be ready
 echo "Waiting for PostgreSQL to be ready..."
@@ -105,7 +111,7 @@ sleep 10
 
 # Add these debug lines
 echo "Testing PostgreSQL connection..."
-docker exec postgres_container psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -c "\l" || {
+docker exec postgres_container psql -U ${POSTGRES_USER} -d ${POSTGRES_DB} -p ${POSTGRES_PORT} -h localhost -c "\l" || {
     echo "Failed to connect to PostgreSQL. Container logs:"
     docker logs postgres_container
     exit 1
@@ -123,6 +129,7 @@ CONTAINER_ID=$(sudo docker run -d \
     -e POSTGRES_USER=${POSTGRES_USER} \
     -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
     -e POSTGRES_DB=${POSTGRES_DB} \
+    -e POSTGRES_PORT=${POSTGRES_PORT} \
     -e WALLET_NAME=${WALLET_NAME} \
     -e HOTKEY_NAME=${HOTKEY_NAME} \
     -e NETWORK=${NETWORK} \
