@@ -170,3 +170,4 @@ testing/
 .vscode/settings.json
 # zip files
 *.zip
+FHE/cifar/cloudflared.deb

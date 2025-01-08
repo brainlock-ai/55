@@ -95,7 +95,7 @@ docker run -d \
     -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
     -e POSTGRES_DB=${POSTGRES_DB} \
     -v postgres_data:/var/lib/postgresql/data \
-    -p 5432:5432 \
+    -p ${POSTGRES_PORT}:${POSTGRES_PORT} \
     postgres:14
 
 # Wait for PostgreSQL to be ready

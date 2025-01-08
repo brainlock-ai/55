@@ -157,7 +157,7 @@ class AutoUpdate(threading.Thread):
                 "-e", f"POSTGRES_PASSWORD={os.getenv('POSTGRES_PASSWORD', 'password')}",
                 "-e", f"POSTGRES_DB={os.getenv('POSTGRES_DB', 'miner_data')}",
                 "-v", "postgres_data:/var/lib/postgresql/data",
-                "-p", "5432:5432",
+                "-p", f"{os.getenv('POSTGRES_PORT')}:{os.getenv('POSTGRES_PORT')}",
                 "postgres:14"
             ])
         except subprocess.CalledProcessError as e:
