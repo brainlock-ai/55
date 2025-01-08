@@ -90,13 +90,14 @@ docker volume create postgres_data
 # Start PostgreSQL with the generated user as the superuser
 docker run -d \
     --name postgres_container \
+    --network=host \
     --restart unless-stopped \
     -e POSTGRES_USER=${POSTGRES_USER} \
     -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
     -e POSTGRES_DB=${POSTGRES_DB} \
     -v postgres_data:/var/lib/postgresql/data \
-    -p ${POSTGRES_PORT}:${POSTGRES_PORT} \
-    postgres:14
+    postgres:14 \
+    -c "port=${POSTGRES_PORT}"
 
 # Wait for PostgreSQL to be ready
 echo "Waiting for PostgreSQL to be ready..."
