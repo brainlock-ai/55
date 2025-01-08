@@ -54,7 +54,7 @@ RUN pip install prometheus_client
 # Create and set up the startup script
 RUN echo '#!/bin/bash' > /project/setup_and_run.sh && \
     echo 'set -e' >> /project/setup_and_run.sh && \
-    echo 'exec python3 validator.py --subtensor.network $NETWORK --netuid $NETUID --wallet.name $WALLET_NAME --wallet.hotkey $HOTKEY_NAME --logging.debug "$@"' >> /project/setup_and_run.sh && \
+    echo 'exec python3 validator.py --subtensor.network $NETWORK --netuid $NETUID --wallet.name $WALLET_NAME --wallet.hotkey $HOTKEY_NAME --logging.info "$@"' >> /project/setup_and_run.sh && \
     chmod +x /project/setup_and_run.sh
 
 ENTRYPOINT ["/project/setup_and_run.sh"]
