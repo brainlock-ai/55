@@ -190,7 +190,7 @@ class Validator(BaseNeuron):
         # miner all at once, which can happen randomly and cause deregistrations.
 
         batched_uids = self.split_uids_in_batches(batch_index_to_query, num_validators, shuffled_filtered_uids)
-
+        bt.logging.info(f"Querying the following UIDs: {batched_uids}")
         return batched_uids
 
     async def run_concurrent_validations(self, batched_uids, miner_inputs):
