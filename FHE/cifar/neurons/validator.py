@@ -351,7 +351,7 @@ class Validator(BaseNeuron):
                     netuid=self.config.netuid,
                     uids=self.metagraph.uids,
                     weights=self.weights[self.metagraph.uids],
-                    wait_for_inclusion=True,
+                    wait_for_inclusion=False,
                     wait_for_finalization=False,
                 )
 
