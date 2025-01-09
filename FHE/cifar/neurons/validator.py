@@ -100,7 +100,7 @@ class Validator(BaseNeuron):
         try:
             validator_index = self.get_validator_index()
             result = validator_index != -1 and self.metagraph.total_stake[validator_index] >= VALIDATOR_MIN_STAKE
-            bt.logging.debug(f"Validator permit check: index={validator_index}, result={result}")
+            bt.logging.info(f"Validator permit check: index={validator_index}, result={result}")
             return result
         except Exception as e:
             bt.logging.error(f"Error in check_validator_permit: {str(e)}\n{traceback.format_exc()}")
@@ -120,7 +120,7 @@ class Validator(BaseNeuron):
         try:
             current = self.block
             should_sync = current % 12 == 0  # Syncs every 12 blocks
-            bt.logging.debug(f"Should resync check: block={current}, result={should_sync}")
+            bt.logging.info(f"Should resync check: block={current}, result={should_sync}")
             return should_sync
         except Exception as e:
             bt.logging.error(f"Error in should_resync_metagraph: {str(e)}\n{traceback.format_exc()}")
@@ -394,7 +394,7 @@ class Validator(BaseNeuron):
                     filtered_uids = list(self.get_queryable_uids())
                     
                     if not filtered_uids:
-                        bt.logging.debug("No queryable UIDs found, waiting...")
+                        bt.logging.info("No queryable UIDs found, waiting...")
                         time.sleep(5)
                         continue
                     
