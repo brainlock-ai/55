@@ -39,6 +39,7 @@ class Validator(BaseNeuron):
 
     def __init__(self):
         super().__init__()
+        self.weights_lock = asyncio.Lock()  # Add lock for weight setting
         
         self.connection_timestamp = None
         self.setup_subtensor()
@@ -338,31 +339,32 @@ class Validator(BaseNeuron):
         """
         Set weights with timeout and retry logic
         """
-        try:
-            positive_scores = self.scores.clone()
-            positive_scores[positive_scores < 0] = 0
-            sum_of_scores = positive_scores.sum() or 1
-            self.weights = positive_scores / sum_of_scores
-            set_weights = partial(
-                self.subtensor.set_weights,
-                wallet=self.wallet,
-                netuid=self.config.netuid,
-                uids=self.metagraph.uids,
-                weights=self.weights[self.metagraph.uids],
-                wait_for_inclusion=True,
-                wait_for_finalization=False,
-            )
+        async with self.weights_lock:  # Ensure only one weight setting operation at a time
+            try:
+                positive_scores = self.scores.clone()
+                positive_scores[positive_scores < 0] = 0
+                sum_of_scores = positive_scores.sum() or 1
+                self.weights = positive_scores / sum_of_scores
+                set_weights = partial(
+                    self.subtensor.set_weights,
+                    wallet=self.wallet,
+                    netuid=self.config.netuid,
+                    uids=self.metagraph.uids,
+                    weights=self.weights[self.metagraph.uids],
+                    wait_for_inclusion=False,
+                    wait_for_finalization=False,
+                )
 
-            result = await asyncio.wait_for(
-                asyncio.to_thread(set_weights),
-                timeout=timeout
-            )
-            self.weights_set_block = self.block
-            return result, None
-        except TimeoutError:
-            return None, "Timeout while setting weights"
-        except Exception as e:
-            return None, str(e)
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(set_weights),
+                    timeout=timeout
+                )
+                self.weights_set_block = self.block
+                return result, None
+            except TimeoutError:
+                return None, "Timeout while setting weights"
+            except Exception as e:
+                return None, str(e)
 
     def run(self):
         """Main validation loop."""
