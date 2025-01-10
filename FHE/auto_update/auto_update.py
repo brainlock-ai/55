@@ -105,12 +105,17 @@ class AutoUpdate(threading.Thread):
             return
 
         print("[Auto-Update] Updating Auto-Update script requirements...")
-        subprocess.check_call([
-            sys.executable, "-m", "pip", "install", "-r", "requirements.txt"
-        ], cwd=repo_dir)
+        auto_update_dir = os.path.join(repo_dir, "FHE", "auto_update")
+        try:
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install", "-r", 
+                os.path.join(auto_update_dir, "requirements.txt")
+            ])
+        except subprocess.CalledProcessError as e:
+            print(f"[Auto-Update] Error installing requirements: {e}")
+            return
 
         print("[Auto-Update] Restarting Auto-Update script...")
-
         subprocess.check_call(["pm2", "restart", "auto_update_sn_54", "--update-env"])
 
         sys.exit(0)
