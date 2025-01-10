@@ -7,6 +7,7 @@ import asyncio
 import threading
 import subprocess
 from packaging import version
+import json
 
 # Function to manually load environment variables from a .env file
 def load_env_file(file_path):
@@ -42,6 +43,34 @@ class AutoUpdate(threading.Thread):
         self.daemon = True
         self.container_image = container_image
         self.check_interval = check_interval
+
+        # Check if we're already running and clean up old instances
+        try:
+            result = subprocess.run(["pm2", "jlist"], capture_output=True, text=True)
+            processes = json.loads(result.stdout)
+            auto_update_processes = [p for p in processes if p.get('name') == 'auto_update_sn_54']
+            
+            if auto_update_processes:
+                # Find newest process
+                newest_process = max(auto_update_processes, 
+                                  key=lambda p: p.get('pm2_env', {}).get('pm_uptime', 0))
+                newest_pm_id = newest_process.get('pm2_env', {}).get('pm_id')
+                
+                # Delete all other instances
+                for process in auto_update_processes:
+                    pm_id = process.get('pm2_env', {}).get('pm_id')
+                    if pm_id != newest_pm_id:
+                        subprocess.run(["pm2", "delete", str(pm_id)], check=False)
+                        print(f"[Auto-Update] Cleaned up old instance with PM2 ID: {pm_id}")
+                
+                # If we're not the newest, exit
+                current_pid = os.getpid()
+                if current_pid != newest_process.get('pid'):
+                    print(f"[Auto-Update] Another instance is already running (PM2 ID: {newest_pm_id}). Exiting.")
+                    sys.exit(0)
+                
+        except Exception as e:
+            print(f"[Auto-Update] Error during process check: {e}")
 
         # Initialize Git repo
         try:

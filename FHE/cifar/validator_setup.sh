@@ -189,11 +189,14 @@ pm2 install pm2-logrotate
 echo "Installing auto-update requirements..."
 pip install -r ../auto_update/requirements.txt
 
-# Use pm2 to start your application
-echo "Starting auto-update script with PM2..."
-sudo pm2 start python3 --name "auto_update_sn_54" --stop-exit-codes 0 -- ../auto_update/start_auto_update.py
-sudo pm2 save
-sudo pm2 startup
+# Check if auto-update is already running in PM2
+if ! pm2 list | grep -q "auto_update_sn_54"; then
+    echo "Starting auto-update script with PM2..."
+    sudo pm2 start python3 --name "auto_update_sn_54" --stop-exit-codes 0 -- ../auto_update/start_auto_update.py
+    sudo pm2 save
+else
+    echo "Auto-update process already exists in PM2, skipping startup"
+fi
 
 # Add PM2 to startup
 sudo env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u $USER --hp /home/$USER
