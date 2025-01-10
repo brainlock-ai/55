@@ -123,7 +123,6 @@ class AutoUpdate(threading.Thread):
         3. Stop and remove existing container
         4. Start new container
         """
-
         os.environ["AUTO_UPDATE_STATUS"] = "IDLE"
 
         print("[Auto-Update] Rebuilding Docker image...")
@@ -136,29 +135,31 @@ class AutoUpdate(threading.Thread):
             print(f"[Auto-Update] Error building Docker image: {e}")
             return
         
-        print("[Auto-Update] Creating database volume if it doesn't yet exit...")
+        print("[Auto-Update] Creating database volume if it doesn't exist...")
         try:
+            # Only create volume if it doesn't exist
             subprocess.run(
                 ["docker", "volume", "create", "postgres_data"],
                 capture_output=True,
                 text=True
             )
         except subprocess.CalledProcessError as e:
-            print(f"[Auto-Update] Error creating database volume: {e}")
+            print(f"[Auto-Update] Error managing database volume: {e}")
             return
         
         print("[Auto-Update] Creating Database container...")
         try:
-            result = subprocess.check_call([
+            subprocess.check_call([
                 "docker", "run", "-d",
                 "--name", "postgres_container",
+                "--network=host",
                 "--restart", "unless-stopped",
                 "-e", f"POSTGRES_USER={os.getenv('POSTGRES_USER', 'user')}",
                 "-e", f"POSTGRES_PASSWORD={os.getenv('POSTGRES_PASSWORD', 'password')}",
                 "-e", f"POSTGRES_DB={os.getenv('POSTGRES_DB', 'miner_data')}",
                 "-v", "postgres_data:/var/lib/postgresql/data",
-                "-p", f"{os.getenv('POSTGRES_PORT')}:{os.getenv('POSTGRES_PORT')}",
-                "postgres:14"
+                "postgres:14",
+                "postgres", "-c", f"port={os.getenv('POSTGRES_PORT', '5432')}"
             ])
         except subprocess.CalledProcessError as e:
             if e.returncode == 125:
@@ -170,7 +171,7 @@ class AutoUpdate(threading.Thread):
         try:
             # Find existing container
             result = subprocess.run(
-                ["docker", "ps", "-q", "--filter", f"ancestor={self.container_image}"],
+                ["docker", "ps", "-q", "--filter", "name=sn54_validator"],
                 capture_output=True,
                 text=True
             )
@@ -181,19 +182,21 @@ class AutoUpdate(threading.Thread):
                 subprocess.check_call(["docker", "stop", container_id])
                 subprocess.check_call(["docker", "rm", container_id])
 
-            # Start new container
+            # Start new container with matching arguments from validator_setup.sh
             subprocess.check_call([
                 "docker", "run", "-d",
                 "--network=host",
+                "--name", "sn54_validator",
+                "--restart", "unless-stopped",
                 "-v", f"{os.path.expanduser('~/.bittensor/wallets')}:/root/.bittensor/wallets",
                 "-e", f"POSTGRES_USER={os.getenv('POSTGRES_USER', 'user')}",
                 "-e", f"POSTGRES_PASSWORD={os.getenv('POSTGRES_PASSWORD', 'password')}",
                 "-e", f"POSTGRES_DB={os.getenv('POSTGRES_DB', 'miner_data')}",
+                "-e", f"POSTGRES_PORT={os.getenv('POSTGRES_PORT', '5432')}",
                 "-e", f"WALLET_NAME={os.getenv('WALLET_NAME')}",
                 "-e", f"HOTKEY_NAME={os.getenv('HOTKEY_NAME')}",
                 "-e", f"NETWORK={os.getenv('NETWORK')}",
                 "-e", f"NETUID={os.getenv('NETUID')}",
-                "--restart", "unless-stopped",
                 self.container_image
             ])
         except subprocess.CalledProcessError as e:
