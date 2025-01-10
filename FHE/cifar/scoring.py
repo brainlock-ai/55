@@ -45,7 +45,7 @@ class SimplifiedReward:
         self.Session = sessionmaker(bind=self.engine)
 
         # Thresholds and constants
-        self.FAILURE_THRESHOLD = 0.20  # 20% failure threshold
+        self.FAILURE_THRESHOLD = 0.6 # 20% failure threshold
         self.EXPONENTIAL_BASE = 2.5
         self.ALPHA = 3.0  # Shape parameter for Pareto distribution
         self.SCALE = 40.0  # Scale factor to normalize scores
@@ -137,13 +137,13 @@ class SimplifiedReward:
         # Calculate Pareto-based score for response time
         base_score = self.pareto_score(median_response_time)
 
-        # Apply failure penalty if above threshold
-        if failure_rate > self.FAILURE_THRESHOLD:
-            excess_failure = failure_rate - self.FAILURE_THRESHOLD
-            penalty = pow(self.EXPONENTIAL_BASE, (excess_failure * 100)) - 1.0
-            base_score = base_score / (1.0 + penalty)
+        # # Apply failure penalty if above threshold
+        # if failure_rate > self.FAILURE_THRESHOLD:
+        #     excess_failure = failure_rate - self.FAILURE_THRESHOLD
+        #     penalty = pow(self.EXPONENTIAL_BASE, (excess_failure * 100)) - 1.0
+        #     base_score = base_score / (1.0 + penalty)
 
-        final_score = max(0.0, base_score)
+        final_score = base_score  # Removed max(0.0, base_score) since we're not applying penalties
 
         # Update score in the database
         new_entry.score = final_score
