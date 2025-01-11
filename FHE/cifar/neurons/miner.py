@@ -39,9 +39,7 @@ class FHEHybridMiner(BaseNeuron):
         # Ensure directories exist
         self.keys_dir.mkdir(parents=True, exist_ok=True)
 
-        # Start stake verification service
-        self.start_stake_service()
-        # Start FHE server after stake service is running
+        # Start FHE server
         self.start_fhe_server()
 
         # Setup the axon
@@ -108,7 +106,7 @@ class FHEHybridMiner(BaseNeuron):
         ):
             bt.logging.error(
                 f"Wallet: {self.wallet} is not registered on netuid {self.config.netuid}."
-                f" Please register the hotkey using `btcli subnets register` before trying again"
+                f" Please register the hotkey using btcli subnets register before trying again"
             )
             exit()
 
@@ -185,41 +183,6 @@ class FHEHybridMiner(BaseNeuron):
             except Exception as e:
                 bt.logging.error(f"Error terminating FHE model server: {e}")
 
-    def start_stake_service(self):
-        """Start a local service for stake verification"""
-        app = FastAPI()
-
-        @app.get("/verify_stake/{hotkey}")
-        async def verify_stake(hotkey: str):
-            # Get latest metagraph
-            self.metagraph = self.subtensor.metagraph(self.config.netuid)
-            
-            try:
-                if hotkey not in self.metagraph.hotkeys:
-                    return {"valid": False, "stake": 0, "error": "Hotkey not in metagraph"}
-                
-                uid = self.metagraph.hotkeys.index(hotkey)
-                stake = float(self.metagraph.S[uid].item())
-                no_force_permit = getattr(self.config, 'no_force_validator_permit', False)
-                
-                return {
-                    "valid": no_force_permit or stake >= 10000,
-                    "stake": stake,
-                    "no_force_permit": no_force_permit,
-                    "error": None
-                }
-            except Exception as e:
-                bt.logging.error(f"Error verifying stake: {str(e)}")
-                return {"valid": False, "stake": 0, "error": str(e)}
-
-        # Run the service in a separate thread
-        def run_service():
-            uvicorn.run(app, host="127.0.0.1", port=8091)
-
-        self.stake_service = Thread(target=run_service, daemon=True)
-        self.stake_service.start()
-        bt.logging.info("Started stake verification service on port 8091")
-
 
 # Run the miner.
 if __name__ == "__main__":
@@ -237,6 +200,7 @@ if __name__ == "__main__":
     )
 
     bt.subtensor.add_args(parser)
+
     bt.logging.add_args(parser)
     bt.wallet.add_args(parser)
     bt.axon.add_args(parser)
@@ -245,33 +209,3 @@ if __name__ == "__main__":
 
     miner = FHEHybridMiner(config=config)
     miner.run()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
