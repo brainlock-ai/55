@@ -43,6 +43,7 @@ class EpistulaVerifier:
         self.MINER_HOTKEY = MINER_HOTKEY
         self.cache_duration = cache_duration  # Cache duration in seconds
         self.stake_cache: Dict[str, Tuple[float, float, bool]] = {}  # hotkey -> (timestamp, stake, valid)
+        self.chain_endpoint = "wss://entrypoint-finney.opentensor.ai:443"
         logger.info(f"Initialized EpistulaVerifier with miner hotkey: {self.MINER_HOTKEY}")
     
     def ss58_decode(self, address: str, valid_ss58_format: Optional[int] = None) -> str:
@@ -131,8 +132,8 @@ class EpistulaVerifier:
             changes = json.loads(response)["params"]["result"]["changes"]
             return changes
     
-    def get_stake_from_hotkey(self, hotkey: str) -> float:
-        """Retrieve stakes for a list of hotkeys."""
+    async def get_stake_from_hotkey(self, hotkey: str) -> float:
+        """Retrieve stakes for a hotkey asynchronously."""
         stake = 0.0
         call_params = [
             "0x" 
@@ -140,16 +141,21 @@ class EpistulaVerifier:
             + "7b4e834c482cd6f103e108dacad0ab65"  # totalHotkeyStake
             + self.convert_ss58_to_hex(hotkey)
         ]
-        call_results = asyncio.run(self.call_rpc(call_params))
         
-        if call_results[1] is not None:
-            stake_hex = call_results[1][2:]
-            stake = self.hex_to_decimal(self.reverse_hex(stake_hex))
-            stake = round(stake / 1e9, 4)
-            print(hotkey, stake)
-        return stake
+        try:
+            call_results = await self.call_rpc(call_params)
+            if call_results[0] is not None:
+                stake_hex = call_results[0][1][2:]
+                stake = int(stake_hex, 16)
+                stake = round(stake / 1e9, 4)
+                logger.debug(f"Retrieved stake for {hotkey}: {stake}")
+            return stake
+        except Exception as e:
+            logger.error(f"Error getting stake for {hotkey}: {e}")
+            raise
 
-    def verify_stake(self, hotkey: str) -> tuple[bool, float, str]:
+    async def verify_stake(self, hotkey: str) -> tuple[bool, float, str]:
+        """Verify stake for a hotkey asynchronously."""
         current_time = time.time()
         
         # Check cache first
@@ -161,13 +167,20 @@ class EpistulaVerifier:
 
         # If not in cache or cache expired, verify with endpoint
         try:
-            stake = self.get_stake_from_hotkey(hotkey)
+            stake = await self.get_stake_from_hotkey(hotkey)
+            
+            # Update cache
+            self.stake_cache[hotkey] = (current_time, stake, True)
+            
+            if stake < 10000:  # 10k Tao minimum
+                return False, stake, f"Insufficient stake: {stake} < 10000"
+                
             return True, stake, ""
         except Exception as e:
             logger.error(f"Stake verification error: {str(e)}")
             return False, 0, str(e)
 
-    def verify_signature(
+    async def verify_signature(
         self,
         signature: str,
         body: bytes,
@@ -179,7 +192,7 @@ class EpistulaVerifier:
         path: str = ""
     ) -> Optional[str]:
         # Verify stake first
-        is_valid, stake, error = self.verify_stake(signed_by)
+        is_valid, stake, error = await self.verify_stake(signed_by)
         if not is_valid:
             logger.error(f"Stake verification failed for {signed_by}: {error}")
             return f"Stake verification failed: {error}"
@@ -321,7 +334,7 @@ async def verify_epistula_request(request: Request, response_cls=Response):
     # Time signature verification
     timer.start("epistula_signature")
     try:
-        error = verifier.verify_signature(
+        error = await verifier.verify_signature(
             signature=signature,
             body=request.state.body,
             timestamp=timestamp,

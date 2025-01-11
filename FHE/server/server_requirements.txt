@@ -4,3 +4,4 @@ uvicorn
 python-multipart
 base58
 substrate-interface
+websockets
