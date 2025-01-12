@@ -30,6 +30,8 @@ from torch import hub
 __all__ = ["cnv_2w2a"]
 
 from .model import cnv
+from .submodel import split_cnv_model
+
 
 model_impl = {
     "CNV": cnv,
