@@ -4,10 +4,12 @@ from torch.nn import Module
 class SubModel(Module):
     def __init__(self, layers):
         super().__init__()
-        self.layers = torch.nn.Sequential(*layers)
+        self.layers = torch.nn.ModuleList(layers)  # Use ModuleList to store layers
 
     def forward(self, x):
-        return self.layers(x)
+        for layer in self.layers:
+            x = layer(x)  # Pass input through each layer sequentially
+        return x
 
 def split_cnv_model(model):
     """

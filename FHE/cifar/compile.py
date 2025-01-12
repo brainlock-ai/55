@@ -15,16 +15,6 @@ from models import cnv_2w2a, split_cnv_model
 from concrete.ml.deployment import FHEModelDev
 from concrete.ml.torch.compile import compile_brevitas_qat_model
 
-def compile_submodels(submodels, example_input):
-    compiled_submodels = []
-    for i, submodel in enumerate(submodels):
-        compiled_model = compile_brevitas_qat_model(
-            submodel,
-            example_input
-        )
-        compiled_submodels.append(compiled_model)
-        print(f"Compiled submodel {i + 1}")
-    return compiled_submodels
 
 def main():
     # Load model
@@ -70,7 +60,7 @@ def main():
             target_transform=None,
         )
 
-    num_samples = 10000
+    num_samples = 500
     train_sub_set = torch.stack(
         [train_set[index][0] for index in range(min(num_samples, len(train_set)))]
     )
@@ -97,6 +87,7 @@ def main():
     # Initialize input for the first convolutional submodel
     current_inputset = train_sub_set  # Original training dataset
 
+    print("before compiling")
     compiled_conv_submodels = []
     for i, conv_submodel in enumerate(conv_splits):
         # Set ONNX file name for the submodel
@@ -111,13 +102,19 @@ def main():
             output_onnx_file=conv_compilation_onnx_path,
             rounding_threshold_bits={"method": Exactness.APPROXIMATE, "n_bits": 6},
             n_bits={"model_inputs": 8, "model_outputs": 8},
+            device=DEVICE,
         )
         compiled_conv_submodels.append(quantized_conv_module)
         print(f"Compiled convolutional submodel {i + 1}")
         
         # Update input for the next submodel
         # Use the compiled module to generate outputs
-        current_inputset = [quantized_conv_module(x) for x in current_inputset]
+        # Update input for the next submodel
+        # Process the entire batch at once
+        with torch.no_grad():  # Disable gradients for efficiency during compilation
+            current_inputset = conv_submodel(current_inputset)
+        #current_inputset = [conv_submodel(x) for x in current_inputset]
+        #current_inputset = [quantized_conv_module(x) for x in current_inputset]
     
     # Flatten the input for the linear submodels
     current_inputset = [torch.flatten(x, start_dim=1) for x in current_inputset]
@@ -136,12 +133,15 @@ def main():
             output_onnx_file=linear_compilation_onnx_path,
             rounding_threshold_bits={"method": Exactness.APPROXIMATE, "n_bits": 6},
             n_bits={"model_inputs": 8, "model_outputs": 8},
+            device=DEVICE,
         )
         compiled_linear_submodels.append(quantized_linear_module)
         print(f"Compiled linear submodel {i + 1}")
         
         # Update input for the next submodel
-        current_inputset = [quantized_linear_module(x) for x in current_inputset]
+        #current_inputset = [quantized_linear_module(x) for x in current_inputset]
+        with torch.no_grad():  # Disable gradients for efficiency during compilation
+            current_inputset = linear_submodel(current_inputset)
 
     # Compile the quantized model
     #quantized_numpy_module = compile_brevitas_qat_model(
