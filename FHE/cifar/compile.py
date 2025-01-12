@@ -121,10 +121,8 @@ def main():
 
     # Flatten the input for the linear submodels
     with torch.no_grad():
-        # Convert list of tensors to a single batch tensor
-        current_inputset = torch.cat(current_inputset, dim=0)  # Combine list into batch tensor
-        current_inputset = torch.flatten(current_inputset, start_dim=1)  # Flatten each sample
-
+        # Flatten the batch tensor for linear layers
+        current_inputset = torch.flatten(current_inputset, start_dim=1)
 
     compiled_linear_submodels = []
     for i, linear_submodel in enumerate(linear_splits):
