@@ -75,7 +75,7 @@ def main():
         [train_set[index][0] for index in range(min(num_samples, len(train_set)))]
     )
 
-    compilation_onnx_path = "compilation_model.onnx"
+    #compilation_onnx_path = "compilation_model.onnx"
     print("Compiling the model ...")
     start_compile = time.time()
 
