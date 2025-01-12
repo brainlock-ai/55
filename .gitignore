@@ -172,5 +172,6 @@ testing/
 *.zip
 
 *.data
+*.keycache
 
 FHE/cifar/cloudflared.deb

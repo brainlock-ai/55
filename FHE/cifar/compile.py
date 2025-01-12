@@ -11,6 +11,7 @@ import torchvision.transforms as transforms
 from concrete.fhe import Configuration, Exactness
 from concrete.compiler import check_gpu_available
 from models import cnv_2w2a, split_cnv_model
+import numpy as np
 
 from concrete.ml.deployment import FHEModelDev
 from concrete.ml.torch.compile import compile_brevitas_qat_model
@@ -109,18 +110,16 @@ def main():
         
         # Update input for the next submodel
         # Use the compiled module to generate outputs
-        # Update input for the next submodel
         # Process the entire batch at once
         with torch.no_grad():  # Disable gradients for efficiency during compilation
-            current_inputset = conv_submodel(current_inputset)
-        #current_inputset = [conv_submodel(x) for x in current_inputset]
-        #current_inputset = [quantized_conv_module(x) for x in current_inputset]
-    
-    # Flatten the input for the linear submodels
-    #current_inputset = [torch.flatten(x, start_dim=1) for x in current_inputset]
+            #current_inputset = conv_submodel(current_inputset)
+            current_inputset = quantized_conv_module(current_inputset)
 
     # Flatten the input for the linear submodels
     with torch.no_grad():
+        # If the current input set is a numpy array, convert it to a PyTorch tensor
+        if isinstance(current_inputset, np.ndarray):
+            current_inputset = torch.tensor(current_inputset)
         # Flatten the batch tensor for linear layers
         current_inputset = torch.flatten(current_inputset, start_dim=1)
 
@@ -144,9 +143,9 @@ def main():
         print(f"Compiled linear submodel {i + 1}")
         
         # Update input for the next submodel
-        #current_inputset = [quantized_linear_module(x) for x in current_inputset]
         with torch.no_grad():  # Disable gradients for efficiency during compilation
-            current_inputset = linear_submodel(current_inputset)
+            #current_inputset = linear_submodel(current_inputset)
+            current_inputset = quantized_linear_module(current_inputset)
 
     # Compile the quantized model
     #quantized_numpy_module = compile_brevitas_qat_model(
