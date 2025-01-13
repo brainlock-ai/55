@@ -280,7 +280,7 @@ class Validator:
         # miner all at once, which can happen randomly and cause deregistrations.
 
         batched_uids = self.split_uids_in_batches(batch_index_to_query, num_validators, shuffled_filtered_uids)
-
+        logger.info(f"Querying the following UIDs: {batched_uids}")
         return batched_uids
 
     def get_miner_scores(self):
