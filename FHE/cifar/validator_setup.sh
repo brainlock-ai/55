@@ -192,18 +192,14 @@ pip install -r ../auto_update/requirements.txt
 
 echo "Checking for running auto-update scripts..."
 
-if ! pm2 list | grep -q "auto_update_sn_54"; then
-    echo "Starting auto-update script with PM2..."
-    sudo pm2 start python3 --name "auto_update_sn_54" --stop-exit-codes 0 -- ../auto_update/start_auto_update.py
-    sudo pm2 save
-    sudo pm2 startup
-else
-    echo "Auto-update script is already running."
-
+# More robust check for running auto-update process
+if pm2 describe auto_update_sn_54 > /dev/null 2>&1; then
+    echo "Auto-update script is already running. Restarting it..."
+    pm2 delete auto_update_sn_54
 fi
 
-# Add PM2 to startup
-sudo env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u $USER --hp /home/$USER
+echo "Starting auto-update script with PM2..."
+sudo pm2 start python3 --name "auto_update_sn_54" --stop-exit-codes 0 -- ../auto_update/start_auto_update.py
 
 echo "Container started with ID: $CONTAINER_ID"
 echo "To view logs, run: sudo docker logs -f $CONTAINER_ID"
