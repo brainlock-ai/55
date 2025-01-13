@@ -45,8 +45,12 @@ class FHEHybridMiner(BaseNeuron):
         # Start FHE server
         self.start_fhe_server()
 
-        # Setup the axon
-        self.setup_axon()
+        # Setup the axon only if not already set
+        if os.getenv("AXON_SET") != "1":
+            self.setup_axon()
+            os.environ["AXON_SET"] = "1"  # Mark as set
+        else:
+            bt.logging.info("Axon setup skipped as it's already set.")
 
     def kill_existing_process(self, port):
         """
