@@ -190,7 +190,10 @@ echo "Installing auto-update requirements..."
 pip install -r ../auto_update/requirements.txt
 
 
-echo "Checking for running auto-update scripts..."
+# Use pm2 to start your application
+echo "Setting up auto-update script..."
+# First, delete any existing instances of auto_update_sn_54
+sudo pm2 delete auto_update_sn_54 2>/dev/null || true
 
 # More robust check for running auto-update process
 if pm2 describe auto_update_sn_54 > /dev/null 2>&1; then
@@ -200,6 +203,7 @@ fi
 
 echo "Starting auto-update script with PM2..."
 sudo pm2 start python3 --name "auto_update_sn_54" --stop-exit-codes 0 -- ../auto_update/start_auto_update.py
+
 
 echo "Container started with ID: $CONTAINER_ID"
 echo "To view logs, run: sudo docker logs -f $CONTAINER_ID"
