@@ -29,7 +29,7 @@ class FHEHybridMiner(BaseNeuron):
         self.base_dir = Path(__file__).parent.parent.parent.parent  # Go up four levels to reach FHE-Subnet
         
         # Update paths relative to base directory
-        self.models_dir = self.base_dir / "FHE" / "cifar"
+        self.models_dir = self.base_dir / "FHE" / "cifar" / "compiled"
         self.keys_dir = self.base_dir / "FHE" / "cifar" / "neurons" / "user_keys"
         self.server_dir = self.base_dir / "FHE" / "server"
         
@@ -58,7 +58,7 @@ class FHEHybridMiner(BaseNeuron):
             sys.exit(1)
         
         # Get absolute path to the model directory
-        model_path = (self.models_dir / self.model_name).absolute()
+        model_path = self.models_dir.absolute()
         
         bt.logging.info(f"Using model path: {model_path}")
         bt.logging.info(f"Using deploy script path: {deploy_script_path}")

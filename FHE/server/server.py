@@ -12,8 +12,10 @@ import asyncio
 import io
 import json
 import os
+from tempfile import NamedTemporaryFile
 import uuid
 import time
+import zipfile
 import base58
 import uvicorn
 import websockets
@@ -302,8 +304,18 @@ verifier = EpistulaVerifier()
 FILE_FOLDER = Path(__file__).parent
 
 KEY_PATH = Path(os.environ.get("KEY_PATH", FILE_FOLDER / Path("server_keys")))
-CLIENT_SERVER_PATH = Path(os.environ.get("PATH_TO_MODEL", FILE_FOLDER / Path("dev")))
-CLIENTS_ZIP_PATH = Path(os.environ.get("PATH_TO_MODEL", FILE_FOLDER / Path("models")))
+CLIENT_SERVER_PATH = Path(os.environ.get("PATH_TO_MODEL", FILE_FOLDER / "dev"))
+CLIENTS_ZIP_PATH = Path(os.environ.get("PATH_TO_MODEL", FILE_FOLDER / "compiled"))
+SUBMODELS = [
+    "conv0",
+    "conv1",
+    "conv2",
+    "conv3",
+    "conv4",
+    "conv5",
+    "linear0",
+    "linear1"
+]
 PORT = os.environ.get("PORT", "5000")
 
 fhe = FHEModelServer(str(CLIENT_SERVER_PATH.resolve()))
@@ -369,9 +381,16 @@ async def get_client(request: Request, _: None = Depends(verify_epistula_request
         raise HTTPException(status_code=500, detail="Could not find client.")
     return FileResponse(path_to_client, media_type="application/zip")
 
+def create_zip(files):
+    temp_file = NamedTemporaryFile(delete=False, suffix=".zip")
+    with zipfile.ZipFile(temp_file.name, 'w') as zipf:
+        for file in files:
+            zipf.write(file, os.path.basename(file))
+    return temp_file.name
+
 @app.get("/get_clients")
 async def get_clients(request: Request, _: None = Depends(verify_epistula_request)):
-    """Get client.zip files with Epistula authentication.
+    """Get submodels client.zip files with Epistula authentication.
 
     Returns:
         FileResponse: client.zip files
@@ -379,10 +398,18 @@ async def get_clients(request: Request, _: None = Depends(verify_epistula_reques
     Raises:
         HTTPException: if the files can't be found locally
     """
-    path_to_client = (CLIENTS_ZIP_PATH / "client.zip").resolve()
-    if not path_to_client.exists():
-        raise HTTPException(status_code=500, detail="Could not find client.")
-    return FileResponse(path_to_client, media_type="application/zip")
+    paths_to_clients = [(CLIENTS_ZIP_PATH / submodel_name / "client.zip").resolve() for submodel_name in SUBMODELS]
+    if not all([path_to_client.exists() for path_to_client in paths_to_clients]):
+        raise HTTPException(status_code=404, detail="Could not find client.")
+    
+    zip_path = create_zip(paths_to_clients)
+
+    # Serve the ZIP file
+    response = FileResponse(zip_path, media_type="application/zip")
+
+    # Clean up the temporary file after sending the response
+    response.background = FastAPI.BackgroundTask(lambda: os.remove(zip_path))
+    return response
 
 @app.post("/add_key")
 async def add_key(

@@ -70,7 +70,8 @@ def build_docker_image(path_to_model: Path, image_name: str, hotkey: str):
             source = path_of_script / file_name
             target = temp_dir / file_name
             shutil.copyfile(src=source, dst=target)
-        shutil.copytree(path_to_model, temp_dir / "dev")
+        shutil.copytree(path_to_model)
+        shutil.copytree(path_to_model, temp_dir / "compiled")
 
         # Build image
         os.chdir(temp_dir)

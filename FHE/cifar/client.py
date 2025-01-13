@@ -12,9 +12,11 @@ This script does the following:
 
 import io
 import os
+import struct
 import sys
 import time
 import json
+import zipfile
 import torch
 import random
 import aiohttp
@@ -123,6 +125,21 @@ class EpistulaClient:
             print(f"Error in model setup: {e}")
             print(traceback.format_exc())
             raise
+    
+    async def fetch_layer_outputs(self, response):
+        """
+        Asynchronous generator to fetch layer outputs with length-prefixed chunks.
+        """
+        while True:
+            # Read the length header (4 bytes)
+            length_bytes = await response.content.readexactly(4)
+            if not length_bytes:
+                break  # End of stream
+            layer_length = struct.unpack("<I", length_bytes)[0]
+
+            # Read the chunk data
+            chunk_data = await response.content.readexactly(layer_length)
+            yield chunk_data
 
     async def query(self, image_index=None):
         """Main query method that can be called from validator."""
@@ -133,10 +150,29 @@ class EpistulaClient:
             bt.logging.info(f"Connected to server at {self.url}")
 
             # Get client.zip using aiohttp with improved error handling
-            bt.logging.info("Requesting client.zip...")
+            bt.logging.info("Requesting submodels zip...")
+            #bt.logging.info("Requesting client.zip...")
             try:
+                #async with self.session.get(
+                #    f"{self.url}/get_client",
+                #    headers=self.epistula.generate_headers(b"", signed_for=self.hotkey),
+                #    ssl=False,
+                #    timeout=aiohttp.ClientTimeout(total=20)  # Increased timeout
+                #) as response:
+                #    if response.status != 200:
+                #        bt.logging.info(f"Get client request failed with status {response.status}")
+                #        return None
+
+                #    content = await response.read()
+                #    if not content:
+                #        bt.logging.info("Received empty response")
+                #        return None
+
+                #    with open("./client.zip", "wb") as f:
+                #        f.write(content)
+                
                 async with self.session.get(
-                    f"{self.url}/get_client",
+                    f"{self.url}/get_clients",
                     headers=self.epistula.generate_headers(b"", signed_for=self.hotkey),
                     ssl=False,
                     timeout=aiohttp.ClientTimeout(total=20)  # Increased timeout
@@ -150,8 +186,12 @@ class EpistulaClient:
                         bt.logging.info("Received empty response")
                         return None
 
-                    with open("./client.zip", "wb") as f:
-                        f.write(content)
+                    zip_file = io.BytesIO(content)
+                    extract_to = f"./{self.hotkey}"
+                    with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+                        os.makedirs(extract_to, exist_ok=True)  # Ensure the extraction directory exists
+                        zip_ref.extractall(extract_to)
+                        print(f"Submodels extracted to {extract_to}")
 
             except aiohttp.ClientError as e:
                 bt.logging.info(f"Network error during get_client: {e}")
@@ -247,6 +287,8 @@ class EpistulaClient:
             # Add retry logic for compute request
             max_retries = 3
             retry_delay = 2  # seconds
+
+            first_layer_response_time = 0
             
             for attempt in range(max_retries):
                 try:
@@ -263,6 +305,13 @@ class EpistulaClient:
                                 await asyncio.sleep(retry_delay)
                                 continue
                             return None
+
+                        async for chunk_data in self.fetch_layer_outputs(response):
+                            if not first_layer_response_time:
+                                first_layer_response_time = time.time()
+                            # Process the chunk (replace with actual deserialization logic)
+                            fhe_value = chunk_data.decode("utf-8")  # Example deserialization
+                            print(f"Received FHE Value: {fhe_value}")
                         
                         try:
                             # Calculate elapsed time
