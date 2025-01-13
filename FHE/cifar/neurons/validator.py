@@ -44,6 +44,24 @@ EPOCH_LENGTH = 360
 SET_WEIGHTS_EVERY_X_BLOCK = 360
 SCORE_EXPONENTIAL_AVG_COEFF = 0.8
 
+# Configure retry decorator
+retry_on_exceptions = (
+    BrokenPipeError,
+    ConnectionRefusedError,
+    websocket.WebSocketConnectionClosedException,
+    ssl.SSLError,
+    ssl.SSLEOFError,
+    Exception,  # Catch-all for other exceptions
+)
+
+weight_setting_retry = retry(
+    tries=3,
+    delay=1,
+    backoff=2,
+    exceptions=retry_on_exceptions,
+    logger=logger
+)
+
 class Validator:
     """Validator class for FHE subnet."""
 
@@ -434,8 +452,8 @@ class Validator:
             if node.stake < VALIDATOR_MIN_STAKE and node.ip != "0.0.0.0":
                 yield node.node_id
 
-    @retry(tries=3, delay=1, backoff=2)
-    def set_weights(self):
+    @weight_setting_retry
+    async def set_weights(self):
         """
         Set weights using Fiber's implementation with retry logic
         """
@@ -443,15 +461,18 @@ class Validator:
             # First fetch latest scores from PostgreSQL
             self.get_miner_scores()
             
-            # Get nodes from chain
-            nodes = get_nodes_for_netuid(substrate=self.substrate, netuid=self.config.netuid)
-            
             # Get validator node ID
             validator_node_id = self.get_validator_index()
             if validator_node_id == -1:
-                logger.error("Failed to get validator node ID")
+                logger.error("Validator node id not found on the metagraph")
                 return False
-            
+
+            # Get nodes from chain
+            nodes = get_nodes_for_netuid(substrate=self.substrate, netuid=self.config.netuid)
+            if not nodes:
+                logger.warning("No nodes found in the network. Skipping weight setting.")
+                return False
+
             # Get version key
             self.substrate, version_key = query_substrate(
                 self.substrate,
@@ -462,23 +483,40 @@ class Validator:
             )
 
             # Prepare normalized weights from scores
+            all_node_ids = [node.node_id for node in nodes]
+            all_node_weights = [0.0 for _ in nodes]
+
+            # Calculate normalized weights for nodes with positive scores
             positive_scores = self.scores.clone()
             positive_scores[positive_scores < 0] = 0
-            sum_of_scores = positive_scores.sum() or 1
+            sum_of_scores = positive_scores.sum()
+
+            if sum_of_scores == 0:
+                logger.warning("No positive scores found. Skipping weight setting.")
+                return False
+
             normalized_weights = positive_scores / sum_of_scores
 
-            logger.info(f"Setting weights with scores from {len([s for s in positive_scores if s > 0])} miners")
+            # Map normalized weights to node indices
+            for i, node_id in enumerate(all_node_ids):
+                all_node_weights[i] = normalized_weights[node_id].item()
+
+            logger.info(f"Node ids: {all_node_ids}")
+            logger.info(f"Node weights: {all_node_weights}")
+            logger.info(
+                f"Number of non zero node weights: {sum(1 for weight in all_node_weights if weight != 0)}"
+            )
             
             # Set weights using Fiber
             success = weights.set_node_weights(
                 substrate=self.substrate,
                 keypair=self.keypair,
-                node_ids=[node.node_id for node in nodes],
-                node_weights=[normalized_weights[node.node_id].item() for node in nodes],
+                node_ids=all_node_ids,
+                node_weights=all_node_weights,
                 netuid=self.config.netuid,
                 version_key=version_key,
                 validator_node_id=validator_node_id,
-                wait_for_inclusion=True,  # Wait for inclusion to ensure transaction success
+                wait_for_inclusion=False,
                 wait_for_finalization=False,
                 max_attempts=3,
             )
@@ -495,7 +533,7 @@ class Validator:
             logger.error(f"Error setting weights: {str(e)}\n{traceback.format_exc()}")
             return False
 
-    def run(self):
+    async def run(self):
         """Main validation loop."""
         logger.info("Starting validator loop.")
         
@@ -522,15 +560,12 @@ class Validator:
                 # Set weights if needed
                 if self.should_set_weights():
                     try:
-                        self.set_weights()
+                        await self.set_weights()
                     except Exception as e:
                         logger.error(f"Failed to set weights: {str(e)}")
                         time.sleep(5)
 
                 # Create new event loop for validations
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
                 try:
                     # Get the UIDs of all miners in the network
                     try:
@@ -555,17 +590,13 @@ class Validator:
                     
                     if batched_uids:
                         try:
-                            results = loop.run_until_complete(
-                                self.run_concurrent_validations(batched_uids, None)
-                            )
+                            results = await self.run_concurrent_validations(batched_uids, None)
                             
                             # Process results if needed
                             if results:
                                 successful_validations = sum(1 for _, r in results if r is not None)
                                 logger.info(f"Completed batch with {successful_validations}/{len(batched_uids)} successful validations")
                                 
-                                # Remove redundant score query
-                                # self.get_miner_scores()
                         except Exception as e:
                             logger.error(f"Failed during validation run: {str(e)}")
                             time.sleep(5)
@@ -573,29 +604,26 @@ class Validator:
                     # Add delay between validation rounds
                     time.sleep(5)
                     
-                finally:
-                    # Clean up the event loop
+                except KeyboardInterrupt:
+                    logger.success("Keyboard interrupt detected. Exiting validator.")
+                    break
+                except (BrokenPipeError, ConnectionRefusedError, websocket.WebSocketConnectionClosedException, ssl.SSLError, ssl.SSLEOFError) as e:
+                    logger.error(f"Connection error in validation loop: {str(e)}")
+                    # Attempt to reconnect
                     try:
-                        loop.close()
-                    except Exception as e:
-                        logger.error(f"Error closing event loop: {str(e)}")
+                        self.setup_subtensor()
+                        time.sleep(5)  # Wait before retrying
+                        continue
+                    except Exception as reconnect_error:
+                        logger.error(f"Failed to reconnect: {str(reconnect_error)}")
+                        time.sleep(10)  # Longer wait before next attempt
+                except Exception as e:
+                    logger.error(f"Error in validation loop: {str(e)} - {traceback.format_exc()}")
+                    time.sleep(5)  # Increased delay before retrying
                     
-            except KeyboardInterrupt:
-                logger.success("Keyboard interrupt detected. Exiting validator.")
-                break
-            except (BrokenPipeError, ConnectionRefusedError, websocket.WebSocketConnectionClosedException, ssl.SSLError, ssl.SSLEOFError) as e:
-                logger.error(f"Connection error in validation loop: {str(e)}")
-                # Attempt to reconnect
-                try:
-                    self.setup_subtensor()
-                    time.sleep(5)  # Wait before retrying
-                    continue
-                except Exception as reconnect_error:
-                    logger.error(f"Failed to reconnect: {str(reconnect_error)}")
-                    time.sleep(10)  # Longer wait before next attempt
             except Exception as e:
-                logger.error(f"Error in validation loop: {str(e)} - {traceback.format_exc()}")
-                time.sleep(5)  # Increased delay before retrying
+                logger.error(f"Error in main loop: {str(e)}\n{traceback.format_exc()}")
+                time.sleep(5)
 
     def close(self):
         """Cleanup method to properly close connections."""
@@ -635,8 +663,8 @@ if __name__ == "__main__":
     validator = Validator()
 
     try:
-        # Run the validator loop
-        validator.run()
+        # Run the validator loop using asyncio
+        asyncio.run(validator.run())
     except Exception as e:
         logger.error(f"Unhandled exception in validator: {str(e)}")
     finally:
