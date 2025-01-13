@@ -1,5 +1,7 @@
 fastapi
+loguru
 uvicorn
 python-multipart
-loguru
+base58
 substrate-interface
+websockets

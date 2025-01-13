@@ -40,6 +40,7 @@ sudo usermod -aG docker $USER
 echo "Installing dependencies..."
 sudo -E apt install -y python3-pip cargo
 pip install bittensor==8.5.1
+pip install websockets
 
 # Install Node.js & npm
 echo "Installing Node.js & npm via apt..."
@@ -104,13 +105,17 @@ sg docker -c '
 echo "Starting miner..."
 # Port 5000 is specified as external_port to broadcast the location of the FHE inference server
 # This is not a traditional axon port, but rather tells the network where to find your inference container
-pm2 start neurons/miner.py -- \
+pm2 start neurons/miner.py --name miner -- \
   --wallet.name ${WALLET_NAME} \
   --wallet.hotkey ${HOTKEY_NAME} \
   --subtensor.network ${NETWORK} \
   --netuid ${NETUID} \
   --no_force_validator_permit \
-  --axon.external_port ${EXTERNAL_PORT}
+  --axon.external_port ${EXTERNAL_PORT} \
+  --max-memory-restart 4G \
+  --restart-delay 10000 \
+  --max-restarts 10 \
+  --min-uptime 1000
 
 # Add PM2 to startup with correct path detection
 PM2_PATH=$(which pm2)
