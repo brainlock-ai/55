@@ -1,17 +1,19 @@
 import time
 from uuid import uuid4
-from hashlib import sha256
 from typing import Dict
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 import json
-import bittensor as bt
+from fiber.chain.signatures import sign_message, get_hash
+from fiber.logging_utils import get_logger
+
+logger = get_logger(__name__)
 
 class EpistulaAuth:
-    def __init__(self, wallet: bt.wallet):
-        self.wallet = wallet
+    def __init__(self, keypair):
+        self.keypair = keypair
         self.session = self.setup_session()
 
     def setup_session(self):
@@ -38,14 +40,14 @@ class EpistulaAuth:
         timestamp = int(time.time() * 1000)
         uuid_str = str(uuid4())
         
-        message = f"{sha256(body).hexdigest()}.{uuid_str}.{timestamp}.{signed_for}"
-        signature = "0x" + self.wallet.hotkey.sign(message).hex()
+        message = f"{get_hash(body)}.{uuid_str}.{timestamp}.{signed_for}"
+        signature = sign_message(self.keypair, message.encode())
 
         return {
             "Epistula-Version": "2",
             "Epistula-Timestamp": str(timestamp),
             "Epistula-Uuid": uuid_str,
-            "Epistula-Signed-By": self.wallet.hotkey.ss58_address,
+            "Epistula-Signed-By": self.keypair.ss58_address,
             "Epistula-Request-Signature": signature,
             "Epistula-Signed-For": signed_for,
         }

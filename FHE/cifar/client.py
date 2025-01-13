@@ -35,11 +35,11 @@ MODELS_DIR = Path(__file__).parent
 sys.path.append(str(MODELS_DIR))
 
 class EpistulaClient: 
-    def __init__(self, wallet: "bt.wallet", server_ip: str, server_port: str, hotkey=None, session=None):
+    def __init__(self, keypair, server_ip: str, server_port: str, hotkey=None, session=None):
         self.url = f"http://{server_ip}:{server_port}"
-        self.wallet = wallet
+        self.keypair = keypair
         self.hotkey = hotkey
-        self.epistula = EpistulaAuth(self.wallet)
+        self.epistula = EpistulaAuth(self.keypair)
         self.session = session or aiohttp.ClientSession()
         self.setup_data()
         self.setup_model()
