@@ -192,11 +192,11 @@ def main():
     print(f"Keygen finished in {end_keygen - start_keygen:.2f} seconds")
 
     for i, conv_module in enumerate(compiled_conv_submodels):
-        dev = FHEModelDev(path_dir=f"./devc_{i}", model=conv_module)
+        dev = FHEModelDev(path_dir=f"./models/conv{i}", model=conv_module)
         dev.save()
 
     for i, linear_module in enumerate(compiled_linear_submodels):
-        dev = FHEModelDev(path_dir=f"./devl_{i}", model=linear_module)
+        dev = FHEModelDev(path_dir=f"./models/linear{i}", model=linear_module)
         dev.save()
 
     #dev = FHEModelDev(path_dir="./dev", model=quantized_numpy_module)

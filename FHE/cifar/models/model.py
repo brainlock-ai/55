@@ -29,13 +29,13 @@ from torch.nn import AvgPool2d, BatchNorm1d, BatchNorm2d, Module, ModuleList
 from .common import CommonActQuant, CommonWeightQuant
 from .tensor_norm import TensorNorm
 
+
 CNV_OUT_CH_POOL = [(64, False), (64, True), (128, False), (128, True), (256, False), (256, False)]
 INTERMEDIATE_FC_FEATURES = [(256, 512), (512, 512)]
 LAST_FC_IN_FEATURES = 512
 LAST_FC_PER_OUT_CH_SCALING = False
 POOL_SIZE = 2
 KERNEL_SIZE = 3
-
 
 class CNV(Module):
     def __init__(self, num_classes, weight_bit_width, act_bit_width, in_bit_width, in_ch):

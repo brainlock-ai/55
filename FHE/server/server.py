@@ -303,6 +303,7 @@ FILE_FOLDER = Path(__file__).parent
 
 KEY_PATH = Path(os.environ.get("KEY_PATH", FILE_FOLDER / Path("server_keys")))
 CLIENT_SERVER_PATH = Path(os.environ.get("PATH_TO_MODEL", FILE_FOLDER / Path("dev")))
+CLIENTS_ZIP_PATH = Path(os.environ.get("PATH_TO_MODEL", FILE_FOLDER / Path("models")))
 PORT = os.environ.get("PORT", "5000")
 
 fhe = FHEModelServer(str(CLIENT_SERVER_PATH.resolve()))
@@ -364,6 +365,21 @@ async def get_client(request: Request, _: None = Depends(verify_epistula_request
         HTTPException: if the file can't be found locally
     """
     path_to_client = (CLIENT_SERVER_PATH / "client.zip").resolve()
+    if not path_to_client.exists():
+        raise HTTPException(status_code=500, detail="Could not find client.")
+    return FileResponse(path_to_client, media_type="application/zip")
+
+@app.get("/get_clients")
+async def get_clients(request: Request, _: None = Depends(verify_epistula_request)):
+    """Get client.zip files with Epistula authentication.
+
+    Returns:
+        FileResponse: client.zip files
+
+    Raises:
+        HTTPException: if the files can't be found locally
+    """
+    path_to_client = (CLIENTS_ZIP_PATH / "client.zip").resolve()
     if not path_to_client.exists():
         raise HTTPException(status_code=500, detail="Could not find client.")
     return FileResponse(path_to_client, media_type="application/zip")
