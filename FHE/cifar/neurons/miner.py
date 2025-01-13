@@ -24,6 +24,9 @@ class FHEHybridMiner(BaseNeuron):
     def __init__(self, config=None):
         super().__init__()
         self.config = config
+
+        # Kill any process using the FHE server port (default 5000)
+        self.kill_existing_process(self.config.fhe_server_port)
         
         # Update the base directory path to point to FHE-Subnet root
         self.base_dir = Path(__file__).parent.parent.parent.parent  # Go up four levels to reach FHE-Subnet
@@ -44,6 +47,22 @@ class FHEHybridMiner(BaseNeuron):
 
         # Setup the axon
         self.setup_axon()
+
+    def kill_existing_process(self, port):
+        """
+        Kill any process using the specified port.
+        """
+        try:
+            # Find the process ID using the port
+            result = subprocess.check_output(f"sudo fuser {port}/tcp", shell=True).decode().strip()
+            if result:
+                bt.logging.info(f"Killing process {result} using port {port}...")
+                os.system(f"sudo kill -9 {result}")
+                bt.logging.success(f"Successfully killed process {result}.")
+        except subprocess.CalledProcessError:
+            bt.logging.info(f"No process found on port {port}.")
+        except Exception as e:
+            bt.logging.error(f"Error killing process on port {port}: {e}")
 
     def setup_logging(self):
         bt.logging(config=self.config, logging_dir=self.config.full_path)
@@ -95,11 +114,9 @@ class FHEHybridMiner(BaseNeuron):
         """
         Wrapper for synchronizing the state of the network for the given miner or validator.
         """
-        # Ensure miner or validator hotkey is still registered on the network.
         self.check_registered()
 
     def check_registered(self):
-        # --- Check for registration.
         if not self.subtensor.is_hotkey_registered(
             netuid=self.config.netuid,
             hotkey_ss58=self.wallet.hotkey.ss58_address,
@@ -113,7 +130,6 @@ class FHEHybridMiner(BaseNeuron):
     def run(self):
         """
         Keep the miner alive.
-        This loop maintains the miner's operations until intentionally stopped.
         """
         bt.logging.info("Starting FHEHybridMiner...")
 
@@ -140,7 +156,6 @@ class FHEHybridMiner(BaseNeuron):
 
                 time.sleep(1)
 
-            # If someone intentionally stops the miner, it'll safely terminate operations.
             except KeyboardInterrupt:
                 bt.logging.success("Miner killed via keyboard interrupt.")
                 self.axon.stop()
@@ -152,7 +167,6 @@ class FHEHybridMiner(BaseNeuron):
                     except Exception as e:
                         bt.logging.error(f"Error stopping FHE model server: {e}")
                 break
-            # In case of unforeseen errors, the miner will log the error and continue operations.
             except Exception:
                 bt.logging.error(traceback.format_exc())
                 continue
@@ -172,9 +186,6 @@ class FHEHybridMiner(BaseNeuron):
             self.miner_uid = miner_uid
 
     def __del__(self):
-        """
-        Destructor to ensure the FHE server is properly terminated.
-        """
         if hasattr(self, 'fhe_server_process'):
             try:
                 self.fhe_server_process.terminate()
@@ -186,9 +197,8 @@ class FHEHybridMiner(BaseNeuron):
 
 # Run the miner.
 if __name__ == "__main__":
-    # Setup argument parser for configurations
     parser = argparse.ArgumentParser(description="FHE Hybrid Miner")
-    parser.add_argument("--fhe_server_port", type=int, help="FHE server port", default=8000)
+    parser.add_argument("--fhe_server_port", type=int, help="FHE server port", default=5000)
     parser.add_argument(
         "--no_force_validator_permit",
         action="store_true",
@@ -200,7 +210,6 @@ if __name__ == "__main__":
     )
 
     bt.subtensor.add_args(parser)
-
     bt.logging.add_args(parser)
     bt.wallet.add_args(parser)
     bt.axon.add_args(parser)
