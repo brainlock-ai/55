@@ -195,10 +195,6 @@ class Validator:
             validator_stake = next((node.stake for node in nodes if node.node_id == validator_index), 0)
             result = validator_index != -1 and validator_stake >= VALIDATOR_MIN_STAKE
             logger.debug(f"Validator permit check: index={validator_index}, result={result}")
-
-            result = validator_index != -1 and self.metagraph.total_stake[validator_index] >= VALIDATOR_MIN_STAKE
-            bt.logging.info(f"Validator permit check: index={validator_index}, result={result}")
-
             return result
         except Exception as e:
             logger.error(f"Error in check_validator_permit: {str(e)}\n{traceback.format_exc()}")
@@ -284,7 +280,7 @@ class Validator:
         # miner all at once, which can happen randomly and cause deregistrations.
 
         batched_uids = self.split_uids_in_batches(batch_index_to_query, num_validators, shuffled_filtered_uids)
-        bt.logging.info(f"Querying the following UIDs: {batched_uids}")
+        logger.info(f"Querying the following UIDs: {batched_uids}")
         return batched_uids
 
     def get_miner_scores(self):
