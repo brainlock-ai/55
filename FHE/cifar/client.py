@@ -133,9 +133,11 @@ class EpistulaClient:
         while True:
             # Read the length header (4 bytes)
             length_bytes = await response.content.readexactly(4)
-            if not length_bytes:
-                break  # End of stream
             layer_length = struct.unpack("<I", length_bytes)[0]
+
+            if layer_length == 0:
+                # End-of-stream marker received
+                return  # Stop the generator
 
             # Read the chunk data
             chunk_data = await response.content.readexactly(layer_length)
@@ -289,6 +291,7 @@ class EpistulaClient:
             retry_delay = 2  # seconds
 
             first_layer_response_time = 0
+            start_send_message_time = time.time()
             
             for attempt in range(max_retries):
                 try:
@@ -306,13 +309,18 @@ class EpistulaClient:
                                 continue
                             return None
 
+                        remote_results = []
                         async for chunk_data in self.fetch_layer_outputs(response):
                             if not first_layer_response_time:
                                 first_layer_response_time = time.time()
-                            # Process the chunk (replace with actual deserialization logic)
-                            fhe_value = chunk_data.decode("utf-8")  # Example deserialization
-                            print(f"Received FHE Value: {fhe_value}")
+                            # Deserialize and decrypt the chunk
+                            remote_result = self.fhe_client.deserialize_decrypt_dequantize(chunk_data)
+                            remote_results.append(remote_result)
                         
+                        remote_pred = remote_results[-1].argmax(axis=1)[0]
+
+
+
                         try:
                             # Calculate elapsed time
                             elapsed_time = time.time() - start_time

@@ -173,6 +173,6 @@ testing/
 
 *.data
 *.keycache
-#*.onnx
+*.onnx
 
 FHE/cifar/cloudflared.deb
