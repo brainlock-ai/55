@@ -9,6 +9,7 @@ import subprocess
 import requests
 from packaging import version
 import json
+import time
 
 # Function to manually load environment variables from a .env file
 def load_env_file(file_path):
@@ -30,6 +31,9 @@ with open(init_path) as f:
         if line.startswith("__version__"):
             __version__ = line.split('=')[-1].replace('"', '').replace(' ', '')
             print(f"[Auto-Update] Current version: {__version__}")
+        elif line.startswith("CREATE_NEW_DB"):
+            CREATE_NEW_DB = line.split('=')[-1].strip().lower() == 'true'
+            print(f"[Auto-Update] Create new DB: {CREATE_NEW_DB}")
             break
 
 repo_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -150,8 +154,8 @@ class AutoUpdate(threading.Thread):
 
         sys.exit(0)
 
-    def notify_update(self):
-        """Get public IP and notify brainlock.ai of successful update"""
+    def notify_update(self, error_message=None):
+        """Get public IP and notify brainlock.ai of successful update or errors"""
         try:
             # Get public IP using ifconfig.me
             ip = requests.get('https://ifconfig.me/ip', timeout=5).text.strip()
@@ -160,12 +164,20 @@ class AutoUpdate(threading.Thread):
                 print("[Auto-Update] Failed to get public IP")
                 return
 
-            # Notify brainlock.ai
-            response = requests.post('https://notify.brainlock.ai/update', json={
+            # Prepare notification payload
+            payload = {
                 'ip': ip,
                 'version': __version__,
-                'status': 'success'
-            }, timeout=10)
+                'status': 'error' if error_message else 'success'
+            }
+            
+            # Add error message if present
+            if error_message:
+                payload['error'] = error_message
+                print(f"[Auto-Update] Notifying brainlock.ai of error: {error_message}")
+
+            # Notify brainlock.ai
+            response = requests.post('https://notify.brainlock.ai/update', json=payload, timeout=10)
             print(f"[Auto-Update] Successfully notified brainlock.ai with IP: {ip}")
         except Exception as e:
             print(f"[Auto-Update] Error notifying brainlock.ai: {e}")
@@ -187,21 +199,36 @@ class AutoUpdate(threading.Thread):
                 "build_docker_client_image.py"
             ], cwd=os.path.join(repo_dir, "FHE", "cifar"))
         except subprocess.CalledProcessError as e:
-            print(f"[Auto-Update] Error building Docker image: {e}")
+            error_msg = f"Error building Docker image: {e}"
+            print(f"[Auto-Update] {error_msg}")
+            self.notify_update(error_msg)
             return
         
-        print("[Auto-Update] Creating database volume if it doesn't exist...")
+        # Database setup
+        if CREATE_NEW_DB:
+            print("[Auto-Update] Creating new database volume...")
+            try:
+                # Remove existing volume and container
+                subprocess.run(["docker", "rm", "-f", "postgres_container"], capture_output=True, text=True)
+                subprocess.run(["docker", "volume", "rm", "postgres_data"], capture_output=True, text=True)
+            except subprocess.CalledProcessError as e:
+                error_msg = f"Error cleaning up old database: {e}"
+                print(f"[Auto-Update] {error_msg}")
+                self.notify_update(error_msg)
+                return
+        else:
+            print("[Auto-Update] Using existing database volume...")
+
+        # Create volume (needed for both new and existing setups)
         try:
-            # Only create volume if it doesn't exist
-            subprocess.run(
-                ["docker", "volume", "create", "postgres_data"],
-                capture_output=True,
-                text=True
-            )
+            subprocess.run(["docker", "volume", "create", "postgres_data"], capture_output=True, text=True)
         except subprocess.CalledProcessError as e:
-            print(f"[Auto-Update] Error managing database volume: {e}")
+            error_msg = f"Error creating database volume: {e}"
+            print(f"[Auto-Update] {error_msg}")
+            self.notify_update(error_msg)
             return
-        
+
+        # Create and start database container
         print("[Auto-Update] Creating Database container...")
         try:
             subprocess.check_call([
@@ -217,10 +244,37 @@ class AutoUpdate(threading.Thread):
                 "postgres", "-c", f"port={os.getenv('POSTGRES_PORT', '5432')}"
             ])
         except subprocess.CalledProcessError as e:
-            if e.returncode == 125:
+            if e.returncode == 125 and not CREATE_NEW_DB:
                 print("[Auto-Update] Database container is already running, skipping")
             else:
-                print("[Auto-Update] Error creating database container")
+                error_msg = "Error creating database container"
+                print(f"[Auto-Update] {error_msg}")
+                self.notify_update(error_msg)
+                return
+
+        # Test database connection if we created a new one
+        if CREATE_NEW_DB:
+            print("[Auto-Update] Waiting for PostgreSQL to be ready...")
+            time.sleep(10)
+
+            print("[Auto-Update] Testing PostgreSQL connection...")
+            try:
+                subprocess.check_call([
+                    "docker", "exec", "postgres_container",
+                    "psql",
+                    "-U", os.getenv('POSTGRES_USER', 'user'),
+                    "-d", os.getenv('POSTGRES_DB', 'miner_data'),
+                    "-p", os.getenv('POSTGRES_PORT', '5432'),
+                    "-h", "localhost",
+                    "-c", "\\l"
+                ])
+                print("[Auto-Update] PostgreSQL connection test successful")
+            except subprocess.CalledProcessError as e:
+                error_msg = "Failed to connect to PostgreSQL"
+                print(f"[Auto-Update] {error_msg}. Container logs:")
+                subprocess.run(["docker", "logs", "postgres_container"])
+                self.notify_update(error_msg)
+                return
 
         print("[Auto-Update] Updating Docker container...")
         try:
@@ -255,11 +309,13 @@ class AutoUpdate(threading.Thread):
                 self.container_image
             ])
         except subprocess.CalledProcessError as e:
-            print(f"[Auto-Update] Error updating Docker container: {e}")
+            error_msg = f"Error updating Docker container: {e}"
+            print(f"[Auto-Update] {error_msg}")
+            self.notify_update(error_msg)
             return
 
         print("[Auto-Update] Update complete! New container is running.")
-        self.notify_update()
+        self.notify_update()  # Notify success
 
     async def main_loop(self):
         """
