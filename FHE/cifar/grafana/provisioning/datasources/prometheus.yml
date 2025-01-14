@@ -5,7 +5,7 @@ deleteDatasources:
     orgId: 1
 
 datasources:
-  - name: Prometheus
+  - name: prometheus
     type: prometheus
     access: proxy
     orgId: 1
