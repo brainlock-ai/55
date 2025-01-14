@@ -1,0 +1,21 @@
+apiVersion: 1
+
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+
+datasources:
+  - name: prometheus
+    type: prometheus
+    access: proxy
+    orgId: 1
+    uid: PBFA97CFB590B2093
+    url: http://localhost:6970
+    basicAuth: false
+    isDefault: true
+    version: 1
+    editable: true
+    jsonData:
+      timeInterval: "5s"
+      httpMethod: "POST"
+      exemplarTraceIdDestinations: [] 

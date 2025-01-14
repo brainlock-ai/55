@@ -138,14 +138,15 @@ class Validator:
 
         for attempt in range(max_retries):
             try:
-                # Initialize substrate connection
-                self.substrate = interface.get_substrate(subtensor_network=self.config.subtensor_network)
+                # Initialize substrate connection if not exists
+                if not hasattr(self, 'substrate') or self.substrate is None:
+                    self.substrate = interface.get_substrate(subtensor_network=self.config.subtensor_network)
                 
                 # Test the connection with multiple retries for the block query
                 for _ in range(3):  # Try block query up to 3 times
                     try:
-                        # Use proper substrate query pattern
-                        self.substrate, current_block = query_substrate(self.substrate, "System", "Number", [], return_value=True)
+                        # Use existing substrate connection
+                        _, current_block = query_substrate(self.substrate, "System", "Number", [], return_value=True)
                         break
                     except ssl_errors as e:
                         if _ < 2:  # Only retry if we haven't tried 3 times yet
@@ -155,7 +156,6 @@ class Validator:
                         raise  # Re-raise on final attempt
                 
                 self.connection_timestamp = time.time()
-                logger.info("Successfully connected to substrate")
                 break  # Break out of main retry loop on success
                 
             except (BrokenPipeError, ConnectionRefusedError, websocket.WebSocketConnectionClosedException, *ssl_errors) as e:
@@ -163,22 +163,22 @@ class Validator:
                     logger.error(f"Failed to connect to substrate after {max_retries} attempts")
                     raise
                 logger.warning(f"Connection attempt {attempt + 1} failed: {str(e)}. Retrying in {retry_delay} seconds...")
+                self.substrate = None  # Clear failed connection
                 time.sleep(retry_delay)
                 retry_delay *= 2  # Exponential backoff
 
     def should_refresh_connection(self) -> bool:
         """Check if we should refresh the connection based on time elapsed or connection state."""
-        if self.connection_timestamp is None:
+        if self.connection_timestamp is None or not hasattr(self, 'substrate') or self.substrate is None:
             return True
         
         # Check if connection is stale based on time
         if (time.time() - self.connection_timestamp) > self.CONNECTION_REFRESH_INTERVAL:
             return True
             
-        # Test connection health
+        # Test connection health using existing connection
         try:
-            # Use proper substrate query pattern
-            self.substrate, current_block = query_substrate(self.substrate, "System", "Number", [], return_value=True)
+            _, _ = query_substrate(self.substrate, "System", "Number", [], return_value=True)
             return False
         except (BrokenPipeError, ConnectionRefusedError, websocket.WebSocketConnectionClosedException, ssl.SSLError, ssl.SSLEOFError) as e:
             logger.warning(f"Connection test failed: {str(e)}")
@@ -541,7 +541,6 @@ class Validator:
             try:
                 # Proactively refresh connection if needed
                 if self.should_refresh_connection():
-                    logger.info("Refreshing subtensor connection...")
                     try:
                         self.setup_subtensor()
                     except Exception as e:
@@ -650,8 +649,8 @@ class Validator:
     def block(self):
         """Get the current block number."""
         try:
-            # Query the current block number from the System module
-            self.substrate, current_block = query_substrate(self.substrate, "System", "Number", [], return_value=True)
+            # Use existing substrate connection
+            _, current_block = query_substrate(self.substrate, "System", "Number", [], return_value=True)
             return current_block
         except Exception as e:
             logger.error(f"Error getting block number: {str(e)}")

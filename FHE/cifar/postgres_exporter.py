@@ -105,7 +105,7 @@ class PostgresExporter:
                 active_miners_query = text("""
                     SELECT COUNT(DISTINCT hotkey) 
                     FROM miner_history 
-                    WHERE timestamp >= NOW() - INTERVAL '1 hour'
+                    WHERE timestamp >= NOW() - INTERVAL '6 hours'
                 """)
                 active_count = conn.execute(active_miners_query).scalar() or 0
                 self.active_miners.set(active_count)
@@ -121,7 +121,7 @@ class PostgresExporter:
                             timestamp,
                             ROW_NUMBER() OVER (PARTITION BY hotkey ORDER BY timestamp DESC) as rn
                         FROM miner_history
-                        WHERE timestamp >= NOW() - INTERVAL '1 hour'
+                        WHERE timestamp >= NOW() - INTERVAL '6 hours'
                     ),
                     miner_aggregates AS (
                         SELECT 
