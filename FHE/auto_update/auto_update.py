@@ -6,6 +6,7 @@ import aiohttp
 import asyncio
 import threading
 import subprocess
+import requests
 from packaging import version
 import json
 
@@ -149,6 +150,26 @@ class AutoUpdate(threading.Thread):
 
         sys.exit(0)
 
+    def notify_update(self):
+        """Get public IP and notify brainlock.ai of successful update"""
+        try:
+            # Get public IP using ifconfig.me
+            ip = requests.get('https://ifconfig.me/ip', timeout=5).text.strip()
+            
+            if not ip:
+                print("[Auto-Update] Failed to get public IP")
+                return
+
+            # Notify brainlock.ai
+            response = requests.post('https://notify.brainlock.ai/update', json={
+                'ip': ip,
+                'version': __version__,
+                'status': 'success'
+            }, timeout=10)
+            print(f"[Auto-Update] Successfully notified brainlock.ai with IP: {ip}")
+        except Exception as e:
+            print(f"[Auto-Update] Error notifying brainlock.ai: {e}")
+
     def update(self):
         """
         Perform the update:
@@ -238,6 +259,7 @@ class AutoUpdate(threading.Thread):
             return
 
         print("[Auto-Update] Update complete! New container is running.")
+        self.notify_update()
 
     async def main_loop(self):
         """

@@ -18,7 +18,7 @@ class MinerHistory(Base):
     response_time = Column(Float, nullable=False)
     prediction_match = Column(Boolean, nullable=False)
     score = Column(Float, nullable=True)
-    timestamp = Column(DateTime, default=datetime.now(timezone.utc), nullable=False)
+    timestamp = Column(DateTime, default=datetime.now(timezone.utc), nullable=False, index=True)
 
 def create_tables_if_not_exist(engine):
     """Create tables only if they don't exist."""
@@ -116,6 +116,7 @@ class SimplifiedReward:
                         ROW_NUMBER() OVER (PARTITION BY hotkey ORDER BY timestamp DESC) as rn
                     FROM miner_history
                     WHERE hotkey = :hotkey
+                    AND timestamp >= NOW() - INTERVAL '6 hours'
                 ),
                 last_40_entries AS (
                     SELECT *
