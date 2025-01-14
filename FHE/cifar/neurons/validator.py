@@ -21,6 +21,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 import os
 import ssl
+import logging
 
 from client import EpistulaClient
 from fiber.chain import chain_utils, interface, metagraph, weights
@@ -34,7 +35,11 @@ from fiber.chain.weights import (
     set_node_weights,
 )
 
+# Configure logging
 logger = get_logger(__name__)
+
+# Reduce verbosity of interface logs
+logging.getLogger('interface').setLevel(logging.WARNING)
 
 # Constants
 VALIDATOR_MIN_STAKE = 20_000
@@ -401,39 +406,38 @@ class Validator:
                         try:
                             # Only process valid responses that have all required fields
                             is_valid = (
-                                result.get('success', False) and  # Must be explicitly successful
-                                (
-                                    # Handle both direct score and score_stats tuple
-                                    (isinstance(result.get('score'), (int, float)) and result.get('score') >= 0) or
-                                    (isinstance(result.get('score_stats'), tuple) and all(isinstance(x, (int, float)) for x in result.get('score_stats')))
-                                ) and
+                                isinstance(result.get('score'), (int, float)) and  # Must have a numeric score
                                 isinstance(result.get('stats'), dict) and  # Must have stats dictionary
+                                isinstance(result.get('predictions_match'), bool) and  # Must have boolean predictions_match
                                 duration > 0  # Must have non-zero duration
                             )
                             
                             if is_valid:
                                 # Extract score and stats from the result
-                                if 'score_stats' in result:
-                                    score_stats = result.get('score_stats')
-                                    mean, median, std = score_stats
-                                    logger.info(f"Score stats for miner {uid} - Mean: {mean:.6f}, Median: {median:.6f}, Std: {std:.6f}")
-                                
+                                score = result.get('score')
                                 stats = result.get('stats', {})
-                                predictions_match = stats.get('predictions_match', True)
                                 
-                                logger.info(f"Recorded validation for miner {uid} with duration {duration:.2f}s")
+                                # Log score stats if available
+                                if 'score_stats' in stats:
+                                    score_stats = stats.get('score_stats')
+                                    if isinstance(score_stats, (tuple, list)) and len(score_stats) == 3:
+                                        mean, median, std = score_stats
+                                        logger.info(f"Score stats for miner {uid} - Mean: {mean:.6f}, Median: {median:.6f}, Std: {std:.6f}")
+                                
+                                logger.info(f"Recorded validation for miner {uid} with duration {duration:.2f}s, score: {score:.6f}")
                             else:
                                 if duration <= 0:
-                                    logger.info(f"Skipping record for miner {uid} due to zero/negative duration: {duration}")
+                                    logger.warning(f"Skipping record for miner {uid} due to zero/negative duration: {duration}")
                                 else:
-                                    logger.info(f"Invalid response format from miner {uid}: {result}")
+                                    logger.warning(f"Invalid response format from miner {uid}. Missing required fields. Response: {result}")
                             
                         except Exception as db_error:
                             logger.error(f"Error recording validation in database for miner {uid}: {str(db_error)}")
                         
                         results.append((uid, result))
                     else:
-                        logger.info(f"Null or invalid result type from miner {uid}: {type(result)}")
+                        logger.warning(f"Null or invalid result type from miner {uid}: {type(result)}")
+                        results.append((uid, None))
                 except Exception as e:
                     logger.info(f"Task failed for miner {uid}: {type(e).__name__}: {str(e)}")
                     results.append((uid, None))
