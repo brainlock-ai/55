@@ -1,5 +1,5 @@
 # Use Python 3.9 base image
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -9,21 +9,6 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /project
-
-# Update pip
-RUN pip install --upgrade pip
-# Install Concrete ML with CPU dependencies
-RUN pip install concrete-ml
-# Install prometheus client
-RUN pip install prometheus_client
-
-# Configure pip to use longer timeouts and retries
-RUN pip config set global.timeout 1000 && \
-    pip config set global.retries 10
-
-# Set PYTHONPATH before trying to use it
-ENV PYTHONPATH=/project
-
 # Copy all necessary files
 COPY client.py .
 COPY epistula.py .
@@ -34,27 +19,38 @@ COPY models/ /project/models/
 COPY neurons/validator.py .
 COPY neurons/neuron.py .
 
+# Update pip
+RUN pip install --upgrade pip
+# Install other requirements
+RUN pip install -r client_requirements.txt
+RUN pip install "fiber @ git+https://github.com/rayonlabs/fiber.git"
+# Install Concrete ML with CPU dependencies
+RUN pip install concrete-ml
+# Install prometheus client
+RUN pip install requests_toolbelt
+RUN pip install prometheus_client
+
+# Configure pip to use longer timeouts and retries
+RUN pip config set global.timeout 1000 && \
+    pip config set global.retries 10
+
+# Set PYTHONPATH before trying to use it
+ENV PYTHONPATH=/project
+
 # Create experiments directory structure
 RUN mkdir -p /project/experiments/CNV_2W2A_2W2A_20221114_131345/checkpoints
 
 # Copy checkpoint file if it exists
 COPY experiments/CNV_2W2A_2W2A_20221114_131345/checkpoints/best.tar /project/experiments/CNV_2W2A_2W2A_20221114_131345/checkpoints/best.tar
 
-# Install other requirements
-RUN pip install -r client_requirements.txt
-
-RUN pip install requests-toolbelt
-
 # Install CPU-only versions of PyTorch and torchvision
 RUN pip install torch==1.13.1+cpu torchvision==0.14.1+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 
-# Install prometheus client
-RUN pip install prometheus_client
 
 # Create and set up the startup script
 RUN echo '#!/bin/bash' > /project/setup_and_run.sh && \
     echo 'set -e' >> /project/setup_and_run.sh && \
-    echo 'exec python3 validator.py --subtensor.network $NETWORK --netuid $NETUID --wallet.name $WALLET_NAME --wallet.hotkey $HOTKEY_NAME --logging.info "$@"' >> /project/setup_and_run.sh && \
+    echo 'exec python3 validator.py --subtensor.network $NETWORK --netuid $NETUID --wallet.name $WALLET_NAME --wallet.hotkey $HOTKEY_NAME  "$@"' >> /project/setup_and_run.sh && \
     chmod +x /project/setup_and_run.sh
 
 ENTRYPOINT ["/project/setup_and_run.sh"]

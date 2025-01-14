@@ -1,5 +1,5 @@
 import torch
-from sqlalchemy import create_engine, Column, String, Float, Integer, Boolean, DateTime, inspect
+from sqlalchemy import create_engine, Column, String, Float, Integer, Boolean, DateTime, inspect, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timezone
@@ -73,87 +73,89 @@ class SimplifiedReward:
 
     def calculate_score(self, response_time: float, predictions_match: bool, hotkey: str) -> tuple[float, dict]:
         """
-        Calculate score based on historical performance and current response.
-        Score is based on median response time (lower is better) with failure rate penalties.	
-        Uses Pareto distribution for time scoring to heavily favor faster responses.	
-        Scores can exceed 1.0 for response times below 40s.	
-        	
+        Calculate score for the current response and store it in the database.
+        Each response is scored immediately using the Pareto distribution.
+        Historical statistics are calculated from up to 40 most recent entries.
+        
         Args:	
             response_time (float): Time taken for the computation	
             predictions_match (bool): Whether predictions matched the original model	
             hotkey (str): The miner's hotkey for tracking history (required)	
             	
         Returns:	
-            tuple[float, dict]: (score, statistics_dict)	
-            - score: Score >= 0, can exceed 1.0 for very fast responses	
-            - statistics_dict: Dictionary containing computed statistics
+            tuple[float, dict]: (current_score, statistics_dict)	
+            - current_score: Score for this specific response (>= 0)
+            - statistics_dict: Historical statistics from up to 40 most recent entries
         """
         if not hotkey:
             raise ValueError("hotkey is required and cannot be None or empty")
 
         session = self.Session()
 
-        # Add current response to the database
-        new_entry = MinerHistory(hotkey=hotkey, response_time=response_time, prediction_match=predictions_match)
-        session.add(new_entry)
-        session.commit()
+        try:
+            # Score this specific response using Pareto distribution
+            current_score = self.pareto_score(response_time) if predictions_match else 0.0
 
-        # Retrieve history for this miner
-        history = session.query(MinerHistory).filter_by(hotkey=hotkey).all()
-        response_times = [entry.response_time for entry in history]
-        predictions = [entry.prediction_match for entry in history]
-        scores = [entry.score for entry in history if entry.score is not None]
-
-        # Calculate statistics
-        rt_stats = self._calculate_stats(response_times)
-
-        # If not enough history, use current response time for stats
-        if len(predictions) < 2:
-            initial_score = self.pareto_score(response_time) if predictions_match else 0.0
-            new_entry.score = initial_score
+            # Add current response and its score to the database
+            new_entry = MinerHistory(
+                hotkey=hotkey, 
+                response_time=response_time, 
+                prediction_match=predictions_match,
+                score=current_score  # Store the score for this specific response
+            )
+            session.add(new_entry)
             session.commit()
-            session.close()
-            return initial_score, {
-                "response_time_stats": (response_time, response_time, 0),
-                "score_stats": (initial_score, initial_score, 0),
-                "failure_rate": 0 if predictions_match else 1
+
+            # Get historical statistics from up to 40 most recent entries (including this one)
+            stats_query = text("""
+                WITH recent_history AS (
+                    SELECT 
+                        response_time,
+                        prediction_match,
+                        score,
+                        ROW_NUMBER() OVER (PARTITION BY hotkey ORDER BY timestamp DESC) as rn
+                    FROM miner_history
+                    WHERE hotkey = :hotkey
+                ),
+                last_40_entries AS (
+                    SELECT *
+                    FROM recent_history
+                    WHERE rn <= 40
+                )
+                SELECT 
+                    AVG(response_time) as rt_mean,
+                    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY response_time) as rt_median,
+                    STDDEV(response_time) as rt_std,
+                    AVG(score) as score_mean,
+                    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY score) as score_median,
+                    STDDEV(score) as score_std,
+                    1.0 - (SUM(CASE WHEN prediction_match THEN 1 ELSE 0 END)::float / COUNT(*)) as failure_rate,
+                    COUNT(*) as entry_count
+                FROM last_40_entries;
+            """)
+            
+            result = session.execute(stats_query, {"hotkey": hotkey}).fetchone()
+            
+            stats = {
+                "current_score": current_score,  # Add the current response's score to stats
+                "response_time_stats": (
+                    result.rt_mean if result.rt_mean is not None else 0.0,
+                    result.rt_median if result.rt_median is not None else 0.0,
+                    result.rt_std if result.rt_std is not None else 0.0
+                ),
+                "score_stats": (
+                    result.score_mean if result.score_mean is not None else 0.0,
+                    result.score_median if result.score_median is not None else 0.0,
+                    result.score_std if result.score_std is not None else 0.0
+                ),
+                "failure_rate": result.failure_rate if result.failure_rate is not None else 0.0,
+                "entry_count": result.entry_count if result.entry_count is not None else 1
             }
 
-        # Calculate failure rate
-        failure_rate = 1.0 - (sum(predictions) / len(predictions))
+            return current_score, stats
 
-        # Get response times of correct predictions
-        correct_times = [t for t, p in zip(response_times, predictions) if p]
-        if not correct_times:
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
             session.close()
-            return 0.0, {
-                "response_time_stats": rt_stats,
-                "score_stats": (0, 0, 0),
-                "failure_rate": failure_rate
-            }
-
-        median_response_time = statistics.median(correct_times)
-
-        # Calculate Pareto-based score for response time
-        base_score = self.pareto_score(median_response_time)
-
-        # # Apply failure penalty if above threshold
-        # if failure_rate > self.FAILURE_THRESHOLD:
-        #     excess_failure = failure_rate - self.FAILURE_THRESHOLD
-        #     penalty = pow(self.EXPONENTIAL_BASE, (excess_failure * 100)) - 1.0
-        #     base_score = base_score / (1.0 + penalty)
-
-        final_score = base_score  # Removed max(0.0, base_score) since we're not applying penalties
-
-        # Update score in the database
-        new_entry.score = final_score
-        session.commit()
-        session.close()
-
-        stats = {
-            "response_time_stats": rt_stats,
-            "score_stats": self._calculate_stats(scores + [final_score]),
-            "failure_rate": failure_rate
-        }
-
-        return final_score, stats

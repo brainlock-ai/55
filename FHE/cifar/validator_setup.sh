@@ -189,17 +189,21 @@ pm2 install pm2-logrotate
 echo "Installing auto-update requirements..."
 pip install -r ../auto_update/requirements.txt
 
-# Check if auto-update is already running in PM2
-if ! pm2 list | grep -q "auto_update_sn_54"; then
-    echo "Starting auto-update script with PM2..."
-    sudo pm2 start python3 --name "auto_update_sn_54" --stop-exit-codes 0 -- ../auto_update/start_auto_update.py
-    sudo pm2 save
-else
-    echo "Auto-update process already exists in PM2, skipping startup"
+
+# Use pm2 to start your application
+echo "Setting up auto-update script..."
+# First, delete any existing instances of auto_update_sn_54
+sudo pm2 delete auto_update_sn_54 2>/dev/null || true
+
+# More robust check for running auto-update process
+if pm2 describe auto_update_sn_54 > /dev/null 2>&1; then
+    echo "Auto-update script is already running. Restarting it..."
+    pm2 delete auto_update_sn_54
 fi
 
-# Add PM2 to startup
-sudo env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u $USER --hp /home/$USER
+echo "Starting auto-update script with PM2..."
+sudo pm2 start python3 --name "auto_update_sn_54" --stop-exit-codes 0 -- ../auto_update/start_auto_update.py
+
 
 echo "Container started with ID: $CONTAINER_ID"
 echo "To view logs, run: sudo docker logs -f $CONTAINER_ID"

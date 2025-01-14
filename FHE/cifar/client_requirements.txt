@@ -4,7 +4,6 @@ tqdm
 requests
 bittensor
 sqlalchemy
-psycopg2-binary
+psycopg2-binary==2.9.10
 concrete-python==2.8.1
 concrete-ml==1.7.0
-requests-toolbelt
