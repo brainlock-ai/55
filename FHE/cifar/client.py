@@ -11,6 +11,7 @@ This script does the following:
 """
 
 import io
+import math
 import os
 import struct
 import sys
@@ -165,6 +166,88 @@ class EpistulaClient:
 
         return np.all(absolute_error <= epsilon) and np.all(relative_error <= delta)
 
+    async def get_client_zip(self):
+        # Get client.zip using aiohttp with improved error handling
+        bt.logging.info("Requesting client.zip...")
+        try:
+            async with self.session.get(
+                f"{self.url}/get_client",
+                headers=self.epistula.generate_headers(b"", signed_for=self.hotkey),
+                ssl=False,
+                timeout=aiohttp.ClientTimeout(total=20)  # Increased timeout
+            ) as response:
+                if response.status != 200:
+                    bt.logging.info(f"Get client request failed with status {response.status}")
+                    return None
+
+                content = await response.read()
+                if not content:
+                    bt.logging.info("Received empty response")
+                    return None
+
+                with open("./client.zip", "wb") as f:
+                    f.write(content)
+
+        except aiohttp.ClientError as e:
+            bt.logging.info(f"Network error during get_client: {e}")
+            return None
+    
+    async def upload_evaluation_keys(self):
+        # Get and upload evaluation keys
+        try:
+            eval_keys = self.fhe_client.get_serialized_evaluation_keys()
+            bt.logging.info("Sending evaluation keys to /add_key endpoint...")
+            key_response = self.epistula.request(
+                'POST',
+                f"{self.url}/add_key",
+                signed_for=self.hotkey,
+                files={"key": io.BytesIO(eval_keys)},
+                timeout=20  # Add 20 second timeout for key upload
+            )
+            bt.logging.info("Received response from /add_key endpoint.")
+            try:
+                uid = key_response.json().get("uid")
+                if not uid:
+                    bt.logging.info("Failed to get UID from server response.")
+                    return None
+            except json.JSONDecodeError:
+                bt.logging.info("Server response was not valid JSON.")
+                return None
+        except BrokenPipeError:
+            bt.logging.info("Broken pipe occurred while uploading evaluation keys.")
+            return None
+        except requests.exceptions.RequestException as e:
+            bt.logging.info(f"Request failed: {e}")
+            return None
+    
+    async def post_with_retries(self, url, body, headers, max_retries, retry_delay):
+        """
+        Helper function to handle retry logic for a POST request.
+        """
+        for attempt in range(max_retries):
+            try:
+                return await self.session.post(
+                    url,
+                    data=body,
+                    headers=headers,
+                    ssl=False,
+                    timeout=aiohttp.ClientTimeout(total=180),
+                )
+            except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+                print(f"Network error during compute request for IP {self.url} (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    # Exhausted retries
+                return None
+            except Exception as e:
+                print(f"Error processing response: {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                else:
+                    # Exhausted retries
+                    return None
+            
+        return None
 
     async def query(self, image_index=None):
         """Main query method that can be called from validator."""
@@ -174,83 +257,12 @@ class EpistulaClient:
 
             bt.logging.info(f"Connected to server at {self.url}")
 
-            # Get client.zip using aiohttp with improved error handling
-            bt.logging.info("Requesting submodels zip...")
-            #bt.logging.info("Requesting client.zip...")
-            try:
-                #async with self.session.get(
-                #    f"{self.url}/get_client",
-                #    headers=self.epistula.generate_headers(b"", signed_for=self.hotkey),
-                #    ssl=False,
-                #    timeout=aiohttp.ClientTimeout(total=20)  # Increased timeout
-                #) as response:
-                #    if response.status != 200:
-                #        bt.logging.info(f"Get client request failed with status {response.status}")
-                #        return None
-
-                #    content = await response.read()
-                #    if not content:
-                #        bt.logging.info("Received empty response")
-                #        return None
-
-                #    with open("./client.zip", "wb") as f:
-                #        f.write(content)
-                
-                async with self.session.get(
-                    f"{self.url}/get_clients",
-                    headers=self.epistula.generate_headers(b"", signed_for=self.hotkey),
-                    ssl=False,
-                    timeout=aiohttp.ClientTimeout(total=20)  # Increased timeout
-                ) as response:
-                    if response.status != 200:
-                        bt.logging.info(f"Get client request failed with status {response.status}")
-                        return None
-
-                    content = await response.read()
-                    if not content:
-                        bt.logging.info("Received empty response")
-                        return None
-
-                    zip_file = io.BytesIO(content)
-                    extract_to = f"./{self.hotkey}"
-                    with zipfile.ZipFile(zip_file, 'r') as zip_ref:
-                        os.makedirs(extract_to, exist_ok=True)  # Ensure the extraction directory exists
-                        zip_ref.extractall(extract_to)
-                        print(f"Submodels extracted to {extract_to}")
-
-            except aiohttp.ClientError as e:
-                bt.logging.info(f"Network error during get_client: {e}")
-                return None
+            self.get_client_zip()
 
             # Initialize FHE client
             self.fhe_client = FHEModelClient(path_dir="./", key_dir="./keys")
 
-            # Get and upload evaluation keys
-            try:
-                eval_keys = self.fhe_client.get_serialized_evaluation_keys()
-                bt.logging.info("Sending evaluation keys to /add_key endpoint...")
-                key_response = self.epistula.request(
-                    'POST',
-                    f"{self.url}/add_key",
-                    signed_for=self.hotkey,
-                    files={"key": io.BytesIO(eval_keys)},
-                    timeout=20  # Add 20 second timeout for key upload
-                )
-                bt.logging.info("Received response from /add_key endpoint.")
-                try:
-                    uid = key_response.json().get("uid")
-                    if not uid:
-                        bt.logging.info("Failed to get UID from server response.")
-                        return None
-                except json.JSONDecodeError:
-                    bt.logging.info("Server response was not valid JSON.")
-                    return None
-            except BrokenPipeError:
-                bt.logging.info("Broken pipe occurred while uploading evaluation keys.")
-                return None
-            except requests.exceptions.RequestException as e:
-                bt.logging.info(f"Request failed: {e}")
-                return None
+            self.upload_evaluation_keys()
 
             # Select image (random if not specified)
             if image_index is None:
@@ -305,137 +317,130 @@ class EpistulaClient:
             body = b''.join(payload)
             headers = self.epistula.generate_headers(body, signed_for=self.hotkey)
             headers['Content-Type'] = f'multipart/form-data; boundary={boundary.decode()}'
-
-            # Start timing
-            start_time = time.time()
             
             # Add retry logic for compute request
             max_retries = 3
             retry_delay = 2  # seconds
 
-            first_layer_response_time = 0
+            # start first timer
             start_send_message_time = time.time()
+            first_layer_response_time = 0.0
+
+            response = await self.post_with_retries(
+                url, body, headers, max_retries, retry_delay
+            )
+            if not response or response.status != 200:
+                print(
+                    f"Compute request failed with status "
+                    f"{response.status if response else 'no response'}"
+                )
+                return None
+
+            chunk_stats = []
+            async for chunk_data, chunk_reception_time in self.fetch_layer_outputs(response):
+                if not first_layer_response_time:
+                    first_layer_response_time = chunk_reception_time
+
+                # Deserialize and decrypt the chunk
+                remote_result = self.fhe_client.deserialize_decrypt_dequantize(chunk_data)
+                chunk_stats.append(
+                    {
+                        "result": remote_result,
+                        "timestamp": chunk_reception_time,
+                    }
+                )
+
+            if not chunk_stats:
+                print("No data received from the server.")
+                return None
+
+            # Compare submodel outputs
+        total_score = 0.0
+        for i, chunk_stat in enumerate(chunk_stats):
+            if i == 0:
+                chunk_simulated_output = self.fhe_client.run(original_input)
+            else:
+                previous_chunk_result = chunk_stats[i - 1]["result"]
+                chunk_simulated_output = self.fhe_client.run(previous_chunk_result)
+
+            chunk_score = self.compare_outputs(chunk_simulated_output, chunk_stat["result"])
+            total_score += chunk_score
+
+            average_score = total_score / len(chunk_stats)
+
+            # ---------------------
+            # METRICS FOR TIMING
+            # ---------------------
+
+            # Times for inferences (one chunk == one inference, if that's your assumption)
+            inference_times = [cs["timestamp"] for cs in chunk_stats]
+
+            start_inference_time = inference_times[0]
+            end_inference_time = inference_times[-1]
+
+            # Time from request-sent to first inference
+            time_to_first_inference = start_inference_time - start_send_message_time
+
+            # Time from first inference to last inference
+            time_for_all_inferences = end_inference_time - start_inference_time
+
+            # Total time from request-sent to last inference
+            total_time = end_inference_time - start_send_message_time
+
+            # "inferences (or models) per second"
+            num_inferences = len(chunk_stats)  # If each chunk is a single inference
+            ips = (num_inferences - 1) / time_for_all_inferences if time_for_all_inferences > 0 else 0.0
+
+            # Check if the server might have buffered results
+            # e.g. by looking at the time to the 20th percentile inference
+            non_streamed = False
+            if num_inferences >= 5:
+                twenty_percent_index = math.ceil(num_inferences * 0.20)
+                time_to_twentieth_percent = inference_times[twenty_percent_index] - start_send_message_time
+
+                # If 5% of the inferences arrived after 75% of total time,
+                # it's likely non-streamed
+                if time_to_twentieth_percent / total_time >= 0.75:
+                    non_streamed = True
+                    print("Likely non-streamed response detected.")
+
+            print(f"Final average score: {average_score:.4f}")
+            # Calculate final score using SimplifiedReward
+            score, stats = self.reward_model.calculate_score(
+                response_time=elapsed_time,
+                predictions_match=predictions_match,
+                hotkey=self.hotkey
+            )
             
-            for attempt in range(max_retries):
-                try:
-                    async with self.session.post(
-                        url, 
-                        data=body, 
-                        headers=headers, 
-                        ssl=False,
-                        timeout=aiohttp.ClientTimeout(total=180)
-                    ) as response:
-                        if response.status != 200:
-                            print(f"Compute request failed with status {response.status}")
-                            if attempt < max_retries - 1:
-                                await asyncio.sleep(retry_delay)
-                                continue
-                            return None
+            # Add predictions_match to stats
+            stats["predictions_match"] = predictions_match
+            stats["elapsed_time"] = elapsed_time
+            
+            # Print results with predictions
+            print("\nScoring Results:")
+            print(f"Time taken: {elapsed_time:.2f}s")
+            print(f"Remote prediction: {remote_pred}")
+            print(f"Original prediction: {original_pred}")
+            print(f"Prediction match: {'Yes' if predictions_match else 'No'}")
+            print(f"Final score: {score:.2%}")
+            
+            # Print detailed stats
+            rt_mean, rt_median, rt_std = stats["response_time_stats"]
+            print(f"Response time stats - Mean: {rt_mean:.2f}s, Median: {rt_median:.2f}s, Std: {rt_std:.2f}s")
+            score_mean, score_median, score_std = stats["score_stats"]
+            print(f"Score stats - Mean: {score_mean:.2%}, Median: {score_median:.2%}, Std: {score_std:.2%}")
+            print(f"Failure rate: {stats['failure_rate']:.2%}")
 
-                        chunk_stats = []
-                        async for chunk_data, chunk_reception_time in self.fetch_layer_outputs(response):
-                            if not first_layer_response_time:
-                                first_layer_response_time = chunk_reception_time
-
-                            # Deserialize and decrypt the chunk
-                            remote_result = self.fhe_client.deserialize_decrypt_dequantize(chunk_data)
-
-                            chunk_stats.append({
-                                "result": remote_result,
-                                "timestamp": chunk_reception_time
-                            })
-                        
-                        # the classification result is the last remote result received
-                        remote_pred = chunk_stats[-1]["result"].argmax(axis=1)[0]
-
-                        # Check if predictions match
-                        predictions_match = remote_pred == original_pred
-
-                        if predictions_match:
-                            # compare each chunk with the expected submodel output from its input
-                            
-                            
-                            for i in range(len(chunk_stats)): # todo hardcode this since we know how many submodels there are
-                                if i == 0:
-                                    chunk_simulated_output = self.fhe_client.run(original_input)
-                                else:
-                                    chunk_simulated_output = self.fhe_client.run(chunk_stat["result"])
-                                chunk_stat = chunk_stats[i]
-                                self.compare_outputs(chunk_simulated_output, chunk_stat["result"])
-
-
-                        try:
-                            # Calculate elapsed time
-                            elapsed_time = time.time() - start_time
-                            
-                            # Get results and make predictions
-                            result_content = await response.read()
-                            if not result_content:
-                                print("Received empty result content")
-                                return None
-
-                            remote_result = self.fhe_client.deserialize_decrypt_dequantize(result_content)
-                            remote_pred = remote_result.argmax(axis=1)[0]
-                            
-                            # Check if predictions match
-                            predictions_match = remote_pred == original_pred
-                            
-                            # Calculate final score using SimplifiedReward
-                            score, stats = self.reward_model.calculate_score(
-                                response_time=elapsed_time,
-                                predictions_match=predictions_match,
-                                hotkey=self.hotkey
-                            )
-                            
-                            # Add predictions_match to stats
-                            stats["predictions_match"] = predictions_match
-                            stats["elapsed_time"] = elapsed_time
-                            
-                            # Print results with predictions
-                            print("\nScoring Results:")
-                            print(f"Time taken: {elapsed_time:.2f}s")
-                            print(f"Remote prediction: {remote_pred}")
-                            print(f"Original prediction: {original_pred}")
-                            print(f"Prediction match: {'Yes' if predictions_match else 'No'}")
-                            print(f"Final score: {score:.2%}")
-                            
-                            # Print detailed stats
-                            rt_mean, rt_median, rt_std = stats["response_time_stats"]
-                            print(f"Response time stats - Mean: {rt_mean:.2f}s, Median: {rt_median:.2f}s, Std: {rt_std:.2f}s")
-                            score_mean, score_median, score_std = stats["score_stats"]
-                            print(f"Score stats - Mean: {score_mean:.2%}, Median: {score_median:.2%}, Std: {score_std:.2%}")
-                            print(f"Failure rate: {stats['failure_rate']:.2%}")
-
-                            return {
-                                'score': score,
-                                'stats': stats,
-                                'elapsed_time': elapsed_time,
-                                'predictions_match': predictions_match,
-                                'true_label': true_label.item(),
-                                'remote_pred': int(remote_pred),
-                                'original_pred': int(original_pred),
-                                'augmentation_seed': augmentation_seed
-                            }
-
-                        except Exception as e:
-                            print(f"Error processing response: {e}")
-                            if attempt < max_retries - 1:
-                                await asyncio.sleep(retry_delay)
-                                continue
-                            return None
-
-                except asyncio.TimeoutError:
-                    print(f"Timeout error during compute request for IP {self.url} (attempt {attempt + 1}/{max_retries})")
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(retry_delay)
-                        continue
-                    return None
-                except aiohttp.ClientError as e:
-                    print(f"Network error during compute request for IP {self.url} (attempt {attempt + 1}/{max_retries}): {str(e)}")
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(retry_delay)
-                        continue
-                    return None
+            return {
+                'score': score,
+                'stats': stats,
+                'elapsed_time': elapsed_time,
+                'predictions_match': predictions_match,
+                'true_label': true_label.item(),
+                'remote_pred': int(remote_pred),
+                'original_pred': int(original_pred),
+                'augmentation_seed': augmentation_seed
+            }
 
         except Exception as e:
             print(f"Error during query for IP {self.url}: {str(e)}")
