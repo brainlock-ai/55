@@ -389,7 +389,7 @@ class EpistulaClient:
 
             # "inferences (or models) per second"
             num_inferences = len(chunk_stats)  # If each chunk is a single inference
-            ips = (num_inferences - 1) / time_for_all_inferences if time_for_all_inferences > 0 else 0.0
+            model_inference_per_second = (num_inferences - 1) / time_for_all_inferences if time_for_all_inferences > 0 else 0.0
 
             # Check if the server might have buffered results
             # e.g. by looking at the time to the 20th percentile inference
