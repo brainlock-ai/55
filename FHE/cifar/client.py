@@ -145,26 +145,37 @@ class EpistulaClient:
             chunk_data = await response.content.readexactly(layer_length)
             yield chunk_data, time.time()
 
-    def compare_outputs(self, y_simulated, y_real, epsilon=1e-3, delta=0.01):
+    def compare_outputs(self, reference_output, actual_output):
         """
-        Compare simulated FHE outputs to real FHE outputs within defined tolerances.
+        Compare two 4D outputs (shape (1, 3, 32, 32)) and return a similarity score in [0, 1].
+        1 indicates an exact match, while 0 means a large difference.
 
-        Args:
-            y_simulated (np.ndarray): Simulated FHE output.
-            y_real (np.ndarray): Real FHE output from the miner.
-            epsilon (float): Absolute error tolerance.
-            delta (float): Relative error tolerance.
+        Steps:
+        1. Move reference_output and actual_output to CPU numpy arrays, if they're torch Tensors.
+        2. Compute L2 distance (Euclidean norm) between them.
+        3. Convert distance to a similarity score via exp(-alpha * distance).
 
-        Returns:
-            bool: True if outputs are within tolerance, False otherwise.
+        :param reference_output: The 'accurate' or reference result, shape (1,3,32,32).
+        :param actual_output:    The 'chunk' or submodel result, shape (1,3,32,32).
+        :return:                 A float similarity score in [0, 1].
         """
-        # Example usage
-        # y_simulated = np.array([0.5, 0.3, 0.2])
-        # y_real = np.array([0.51, 0.29, 0.21])  # Real output from miner
-        absolute_error = np.abs(y_simulated - y_real)
-        relative_error = np.abs(y_simulated - y_real) / np.maximum(np.abs(y_simulated), 1e-6)
 
-        return np.all(absolute_error <= epsilon) and np.all(relative_error <= delta)
+        # 1) Convert Torch tensors to numpy arrays if needed
+        if isinstance(reference_output, torch.Tensor):
+            reference_output = reference_output.detach().cpu().numpy()
+        if isinstance(actual_output, torch.Tensor):
+            actual_output = actual_output.detach().cpu().numpy()
+
+        # 2) Compute the L2 distance (Euclidean norm) between the outputs
+        diff = reference_output - actual_output
+        l2_distance = np.linalg.norm(diff)
+
+        # 3) Map the distance to a similarity score
+        #    Adjust alpha to tune how quickly the similarity drops
+        alpha = 0.1
+        exactness_score = np.exp(-alpha * l2_distance)
+
+        return exactness_score
 
     async def get_client_zip(self):
         # Get client.zip using aiohttp with improved error handling
@@ -210,6 +221,7 @@ class EpistulaClient:
                 if not uid:
                     bt.logging.info("Failed to get UID from server response.")
                     return None
+                return uid
             except json.JSONDecodeError:
                 bt.logging.info("Server response was not valid JSON.")
                 return None
@@ -249,6 +261,35 @@ class EpistulaClient:
             
         return None
 
+    def build_body_and_headers(self, uid, encrypted_input):
+        boundary = b'----WebKitFormBoundary' + os.urandom(16).hex().encode('ascii')
+            
+        # Construct payload
+        payload = []
+        payload.extend([
+            b'--' + boundary + b'\r\n',
+            b'Content-Disposition: form-data; name="model_input"; filename="model_input"\r\n',
+            b'Content-Type: application/octet-stream\r\n',
+            b'\r\n',
+            encrypted_input,
+            b'\r\n'
+        ])
+        payload.extend([
+            b'--' + boundary + b'\r\n',
+            b'Content-Disposition: form-data; name="uid"\r\n',
+            b'\r\n',
+            str(uid).encode(),
+            b'\r\n'
+        ])
+        payload.extend([
+            b'--' + boundary + b'--\r\n'
+        ])
+        
+        body = b''.join(payload)
+        headers = self.epistula.generate_headers(body, signed_for=self.hotkey)
+        headers['Content-Type'] = f'multipart/form-data; boundary={boundary.decode()}'
+        return body, headers
+
     async def query(self, image_index=None):
         """Main query method that can be called from validator."""
         try:
@@ -262,7 +303,7 @@ class EpistulaClient:
             # Initialize FHE client
             self.fhe_client = FHEModelClient(path_dir="./", key_dir="./keys")
 
-            self.upload_evaluation_keys()
+            uid = self.upload_evaluation_keys()
 
             # Select image (random if not specified)
             if image_index is None:
@@ -291,43 +332,14 @@ class EpistulaClient:
 
             # Send compute request
             url = f"{self.url}/compute"
-            boundary = b'----WebKitFormBoundary' + os.urandom(16).hex().encode('ascii')
             
-            # Construct payload
-            payload = []
-            payload.extend([
-                b'--' + boundary + b'\r\n',
-                b'Content-Disposition: form-data; name="model_input"; filename="model_input"\r\n',
-                b'Content-Type: application/octet-stream\r\n',
-                b'\r\n',
-                encrypted_input,
-                b'\r\n'
-            ])
-            payload.extend([
-                b'--' + boundary + b'\r\n',
-                b'Content-Disposition: form-data; name="uid"\r\n',
-                b'\r\n',
-                str(uid).encode(),
-                b'\r\n'
-            ])
-            payload.extend([
-                b'--' + boundary + b'--\r\n'
-            ])
+            body, headers = self.build_body_and_headers(uid, encrypted_input)
             
-            body = b''.join(payload)
-            headers = self.epistula.generate_headers(body, signed_for=self.hotkey)
-            headers['Content-Type'] = f'multipart/form-data; boundary={boundary.decode()}'
-            
-            # Add retry logic for compute request
-            max_retries = 3
-            retry_delay = 2  # seconds
-
             # start first timer
             start_send_message_time = time.time()
-            first_layer_response_time = 0.0
 
             response = await self.post_with_retries(
-                url, body, headers, max_retries, retry_delay
+                url, body, headers, max_retries=3, retry_delay=2
             )
             if not response or response.status != 200:
                 print(
@@ -336,60 +348,52 @@ class EpistulaClient:
                 )
                 return None
 
+            previous_chunk_reception_time = start_send_message_time
             chunk_stats = []
-            async for chunk_data, chunk_reception_time in self.fetch_layer_outputs(response):
-                if not first_layer_response_time:
-                    first_layer_response_time = chunk_reception_time
 
+            async for chunk_data, chunk_reception_time in self.fetch_layer_outputs(response):
                 # Deserialize and decrypt the chunk
                 remote_result = self.fhe_client.deserialize_decrypt_dequantize(chunk_data)
                 chunk_stats.append(
                     {
                         "result": remote_result,
                         "timestamp": chunk_reception_time,
+                        "inference_time": previous_chunk_reception_time - chunk_reception_time,
                     }
                 )
+                previous_chunk_reception_time = chunk_reception_time
 
             if not chunk_stats:
                 print("No data received from the server.")
                 return None
 
             # Compare submodel outputs
-        total_score = 0.0
-        for i, chunk_stat in enumerate(chunk_stats):
-            if i == 0:
-                chunk_simulated_output = self.fhe_client.run(original_input)
-            else:
-                previous_chunk_result = chunk_stats[i - 1]["result"]
-                chunk_simulated_output = self.fhe_client.run(previous_chunk_result)
+            total_score = 0.0
+            for i, chunk_stat in enumerate(chunk_stats):
+                if i == 0:
+                    chunk_simulated_output = self.fhe_client.run(original_input)
+                else:
+                    previous_chunk_result = chunk_stats[i - 1]["result"]
+                    chunk_simulated_output = self.fhe_client.run(previous_chunk_result)
 
-            chunk_score = self.compare_outputs(chunk_simulated_output, chunk_stat["result"])
+                chunk_score = self.compare_outputs(chunk_simulated_output, chunk_stat["result"])
             total_score += chunk_score
 
             average_score = total_score / len(chunk_stats)
-
-            # ---------------------
-            # METRICS FOR TIMING
-            # ---------------------
-
+            
             # Times for inferences (one chunk == one inference, if that's your assumption)
-            inference_times = [cs["timestamp"] for cs in chunk_stats]
+            inference_times = [cs["inference_time"] for cs in chunk_stats]
+            average_inference_time = sum(inference_times)/len(inference_times)
 
             start_inference_time = inference_times[0]
             end_inference_time = inference_times[-1]
-
-            # Time from request-sent to first inference
-            time_to_first_inference = start_inference_time - start_send_message_time
-
-            # Time from first inference to last inference
-            time_for_all_inferences = end_inference_time - start_inference_time
 
             # Total time from request-sent to last inference
             total_time = end_inference_time - start_send_message_time
 
             # "inferences (or models) per second"
             num_inferences = len(chunk_stats)  # If each chunk is a single inference
-            model_inference_per_second = (num_inferences - 1) / time_for_all_inferences if time_for_all_inferences > 0 else 0.0
+            model_inference_per_second = num_inferences / total_time if total_time > 0 else 0.0
 
             # Check if the server might have buffered results
             # e.g. by looking at the time to the 20th percentile inference
@@ -406,9 +410,9 @@ class EpistulaClient:
 
             print(f"Final average score: {average_score:.4f}")
             # Calculate final score using SimplifiedReward
-            score, stats = self.reward_model.calculate_score(
-                response_time=elapsed_time,
-                predictions_match=predictions_match,
+            score, stats = self.reward_model.calculate_ips_score(
+                inference_per_second=model_inference_per_second,
+                average_score=average_score,
                 hotkey=self.hotkey
             )
             
