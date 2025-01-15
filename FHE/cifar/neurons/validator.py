@@ -22,6 +22,7 @@ from sqlalchemy.orm import sessionmaker
 import os
 import ssl
 import logging
+import json
 
 from client import EpistulaClient
 from fiber.chain import chain_utils, interface, metagraph, weights
@@ -34,6 +35,7 @@ from fiber.chain.weights import (
     can_set_weights,
     set_node_weights,
 )
+from scoring import SimplifiedReward
 
 # Configure logging
 logger = get_logger(__name__)
@@ -84,6 +86,9 @@ class Validator:
         db_url = f"postgresql://{os.getenv('POSTGRES_USER', 'user')}:{os.getenv('POSTGRES_PASSWORD', 'password')}@{os.getenv('POSTGRES_HOST', 'localhost')}:{os.getenv('POSTGRES_PORT', '5432')}/{os.getenv('POSTGRES_DB', 'miner_data')}"
         self.engine = create_engine(db_url)
         self.Session = sessionmaker(bind=self.engine)
+        
+        # Initialize scoring system
+        self.reward_model = SimplifiedReward(db_url=db_url)
 
         # Initialize substrate connection
         self.setup_subtensor()
@@ -404,32 +409,42 @@ class Validator:
                     
                     if result is not None and isinstance(result, dict):
                         try:
-                            # Only process valid responses that have all required fields
+                            # Process valid responses that have required fields
+                            score = result.get('score')
+                            stats = result.get('stats')
+                            predictions_match = result.get('predictions_match')
+                            
                             is_valid = (
-                                isinstance(result.get('score'), (int, float)) and  # Must have a numeric score
-                                isinstance(result.get('stats'), dict) and  # Must have stats dictionary
-                                isinstance(result.get('predictions_match'), bool) and  # Must have boolean predictions_match
+                                isinstance(score, (int, float)) and  # Must have a numeric score
+                                isinstance(stats, dict) and  # Must have stats dictionary
+                                isinstance(predictions_match, bool) and  # Must have boolean predictions_match
                                 duration > 0  # Must have non-zero duration
                             )
                             
                             if is_valid:
-                                # Extract score and stats from the result
-                                score = result.get('score')
-                                stats = result.get('stats', {})
-                                
-                                # Log score stats if available
-                                if 'score_stats' in stats:
-                                    score_stats = stats.get('score_stats')
-                                    if isinstance(score_stats, (tuple, list)) and len(score_stats) == 3:
-                                        mean, median, std = score_stats
-                                        logger.info(f"Score stats for miner {uid} - Mean: {mean:.6f}, Median: {median:.6f}, Std: {std:.6f}")
-                                
-                                logger.info(f"Recorded validation for miner {uid} with duration {duration:.2f}s, score: {score:.6f}")
+                                try:
+                                    # Calculate score using SimplifiedReward model
+                                    current_score, stats = self.reward_model.calculate_score(
+                                        response_time=duration,
+                                        predictions_match=predictions_match,
+                                        hotkey=hotkey
+                                    )
+                                    
+                                    logger.info(f"Recorded validation for miner {uid} with duration {duration:.2f}s, score: {current_score:.6f}")
+                                    
+                                    # Log score stats if available
+                                    if 'score_stats' in stats:
+                                        score_stats = stats.get('score_stats')
+                                        if isinstance(score_stats, (tuple, list)) and len(score_stats) == 3:
+                                            mean, median, std = score_stats
+                                            logger.info(f"Score stats for miner {uid} - Mean: {mean:.6f}, Median: {median:.6f}, Std: {std:.6f}")
+                                except Exception as scoring_error:
+                                    logger.error(f"Error calculating score: {str(scoring_error)}")
                             else:
                                 if duration <= 0:
                                     logger.warning(f"Skipping record for miner {uid} due to zero/negative duration: {duration}")
                                 else:
-                                    logger.warning(f"Invalid response format from miner {uid}. Missing required fields. Response: {result}")
+                                    logger.warning(f"Invalid response format from miner {uid}. Missing or invalid fields. Required: score (number), stats (dict), predictions_match (bool). Got: score={type(score)}, stats={type(stats)}, predictions_match={type(predictions_match)}")
                             
                         except Exception as db_error:
                             logger.error(f"Error recording validation in database for miner {uid}: {str(db_error)}")

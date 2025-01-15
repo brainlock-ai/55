@@ -211,8 +211,8 @@ class AutoUpdate(threading.Thread):
                 # Force remove container even if it's running
                 subprocess.run(["docker", "rm", "-f", "postgres_container"], check=True)
                 print("[Auto-Update] Successfully removed old postgres container")
-                # Force remove volume
-                subprocess.run(["docker", "volume", "rm", "-f", "postgres_data"], check=True)
+                # Remove volume without -f flag
+                subprocess.run(["docker", "volume", "rm", "postgres_data"], check=True)
                 print("[Auto-Update] Successfully removed old postgres volume")
                 # Create new volume
                 subprocess.run(["docker", "volume", "create", "postgres_data"], check=True)
@@ -224,10 +224,17 @@ class AutoUpdate(threading.Thread):
                 return
         else:
             print("[Auto-Update] Using existing database volume...")
-            # In non-CREATE_NEW_DB mode, just ensure container is removed if it exists
+            # In non-CREATE_NEW_DB mode, ensure container is removed if it exists
             try:
                 subprocess.run(["docker", "rm", "-f", "postgres_container"], check=False)
                 print("[Auto-Update] Cleaned up old postgres container")
+            except:
+                pass
+            
+            # Ensure postgres_data volume exists even in non-CREATE_NEW_DB mode
+            try:
+                subprocess.run(["docker", "volume", "create", "postgres_data"], check=False)
+                print("[Auto-Update] Ensured postgres_data volume exists")
             except:
                 pass
 

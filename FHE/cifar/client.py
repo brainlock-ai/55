@@ -307,14 +307,14 @@ class EpistulaClient:
                             print(f"Failure rate: {stats['failure_rate']:.2%}")
 
                             return {
-                                'score': score,
+                                'score': float(score),
                                 'stats': stats,
-                                'elapsed_time': elapsed_time,
-                                'predictions_match': predictions_match,
-                                'true_label': true_label.item(),
+                                'elapsed_time': float(elapsed_time),
+                                'predictions_match': bool(predictions_match),
+                                'true_label': int(true_label.item()),
                                 'remote_pred': int(remote_pred),
                                 'original_pred': int(original_pred),
-                                'augmentation_seed': augmentation_seed
+                                'augmentation_seed': int(augmentation_seed)
                             }
 
                         except Exception as e:
