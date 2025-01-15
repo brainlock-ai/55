@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import statistics
 import os
 import numpy as np
+import json
 
 # Create Base at module level so it can be imported
 Base = declarative_base()
@@ -15,9 +16,8 @@ class MinerHistory(Base):
     __tablename__ = 'miner_history'
     id = Column(Integer, primary_key=True, autoincrement=True)
     hotkey = Column(String, index=True, nullable=False)
-    response_time = Column(Float, nullable=False)
-    prediction_match = Column(Boolean, nullable=False)
     score = Column(Float, nullable=True)
+    stats = Column(String, nullable=True)  # JSON string containing response time, prediction match, etc.
     timestamp = Column(DateTime, default=datetime.now(timezone.utc), nullable=False, index=True)
 
 def create_tables_if_not_exist(engine):
@@ -31,10 +31,6 @@ def create_tables_if_not_exist(engine):
 
 # SimplifiedReward class
 class SimplifiedReward:
-    """
-    This is a simplified version, where vTrust should be more stable. We will work on
-    using a ranging "scale" factor based on the top k % of miner's response times
-    """
     def __init__(self, db_url=None):
         if db_url is None:
             db_url = f"postgresql://{os.getenv('POSTGRES_USER', 'user')}:{os.getenv('POSTGRES_PASSWORD', 'password')}@{os.getenv('POSTGRES_HOST', 'localhost')}:{os.getenv('POSTGRES_PORT', '5432')}/{os.getenv('POSTGRES_DB', 'miner_data')}"
@@ -51,42 +47,11 @@ class SimplifiedReward:
         self.SCALE = 40.0  # Scale factor to normalize scores
 
     def pareto_score(self, time):
-        """
-        Calculate Pareto-based score for response time.
-        Score = (scale/x)^α where α is shape parameter.	
-        This creates a heavy-tailed distribution favoring faster times.	
-        Scores can exceed 1.0 for times below the scale factor.
-        """
+        """Calculate Pareto-based score for response time."""
         return pow(self.SCALE / time, self.ALPHA)
 
-    def _calculate_stats(self, values):
-        """Calculate mean, median, and standard deviation of a sequence"""
-        if not values:
-            return 0, 0, 0
-
-        values_array = np.array(values)
-        return (
-            np.mean(values_array),
-            np.median(values_array),
-            np.std(values_array) if len(values_array) > 1 else 0
-        )
-
     def calculate_score(self, response_time: float, predictions_match: bool, hotkey: str) -> tuple[float, dict]:
-        """
-        Calculate score for the current response and store it in the database.
-        Each response is scored immediately using the Pareto distribution.
-        Historical statistics are calculated from up to 40 most recent entries.
-        
-        Args:	
-            response_time (float): Time taken for the computation	
-            predictions_match (bool): Whether predictions matched the original model	
-            hotkey (str): The miner's hotkey for tracking history (required)	
-            	
-        Returns:	
-            tuple[float, dict]: (current_score, statistics_dict)	
-            - current_score: Score for this specific response (>= 0)
-            - statistics_dict: Historical statistics from up to 40 most recent entries
-        """
+        """Calculate score for the current response and store it in the database."""
         if not hotkey:
             raise ValueError("hotkey is required and cannot be None or empty")
 
@@ -96,32 +61,46 @@ class SimplifiedReward:
             # Score this specific response using Pareto distribution
             current_score = self.pareto_score(response_time) if predictions_match else 0.0
 
+            # Create stats dictionary for current response
+            current_stats = {
+                "current_score": float(current_score),
+                "response_time": float(response_time),
+                "predictions_match": bool(predictions_match),
+                "failure_rate": float(0.0 if predictions_match else 1.0)
+            }
+
             # Add current response and its score to the database
             new_entry = MinerHistory(
-                hotkey=hotkey, 
-                response_time=response_time, 
-                prediction_match=predictions_match,
-                score=current_score  # Store the score for this specific response
+                hotkey=hotkey,
+                score=float(current_score),
+                stats=json.dumps(current_stats)
             )
             session.add(new_entry)
             session.commit()
 
-            # Get historical statistics from up to 40 most recent entries (including this one)
+            # Get historical statistics from up to 40 most recent entries
             stats_query = text("""
                 WITH recent_history AS (
                     SELECT 
-                        response_time,
-                        prediction_match,
                         score,
+                        stats::json as stats_json,
                         ROW_NUMBER() OVER (PARTITION BY hotkey ORDER BY timestamp DESC) as rn
                     FROM miner_history
                     WHERE hotkey = :hotkey
                     AND timestamp >= NOW() - INTERVAL '6 hours'
+                    AND stats IS NOT NULL
                 ),
                 last_40_entries AS (
                     SELECT *
                     FROM recent_history
                     WHERE rn <= 40
+                ),
+                response_times AS (
+                    SELECT 
+                        (stats_json->>'response_time')::float as response_time,
+                        score,
+                        (stats_json->>'predictions_match')::boolean as predictions_match
+                    FROM last_40_entries
                 )
                 SELECT 
                     AVG(response_time) as rt_mean,
@@ -130,27 +109,30 @@ class SimplifiedReward:
                     AVG(score) as score_mean,
                     PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY score) as score_median,
                     STDDEV(score) as score_std,
-                    1.0 - (SUM(CASE WHEN prediction_match THEN 1 ELSE 0 END)::float / COUNT(*)) as failure_rate,
+                    1.0 - (SUM(CASE WHEN predictions_match THEN 1 ELSE 0 END)::float / COUNT(*)) as failure_rate,
                     COUNT(*) as entry_count
-                FROM last_40_entries;
+                FROM response_times;
             """)
             
             result = session.execute(stats_query, {"hotkey": hotkey}).fetchone()
             
+            # Prepare aggregated stats
             stats = {
-                "current_score": current_score,  # Add the current response's score to stats
+                "current_score": float(current_score),
+                "response_time": float(response_time),
+                "predictions_match": bool(predictions_match),
                 "response_time_stats": (
-                    result.rt_mean if result.rt_mean is not None else 0.0,
-                    result.rt_median if result.rt_median is not None else 0.0,
-                    result.rt_std if result.rt_std is not None else 0.0
+                    float(result.rt_mean if result.rt_mean is not None else response_time),
+                    float(result.rt_median if result.rt_median is not None else response_time),
+                    float(result.rt_std if result.rt_std is not None else 0.0)
                 ),
                 "score_stats": (
-                    result.score_mean if result.score_mean is not None else 0.0,
-                    result.score_median if result.score_median is not None else 0.0,
-                    result.score_std if result.score_std is not None else 0.0
+                    float(result.score_mean if result.score_mean is not None else current_score),
+                    float(result.score_median if result.score_median is not None else current_score),
+                    float(result.score_std if result.score_std is not None else 0.0)
                 ),
-                "failure_rate": result.failure_rate if result.failure_rate is not None else 0.0,
-                "entry_count": result.entry_count if result.entry_count is not None else 1
+                "failure_rate": float(result.failure_rate if result.failure_rate is not None else (0.0 if predictions_match else 1.0)),
+                "entry_count": int(result.entry_count if result.entry_count is not None else 1)
             }
 
             return current_score, stats

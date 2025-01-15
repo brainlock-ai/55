@@ -208,9 +208,15 @@ class AutoUpdate(threading.Thread):
         if CREATE_NEW_DB:
             print("[Auto-Update] Creating new database volume...")
             try:
-                # Remove existing volume and container
-                subprocess.run(["docker", "rm", "-f", "postgres_container"], capture_output=True, text=True)
-                subprocess.run(["docker", "volume", "rm", "postgres_data"], capture_output=True, text=True)
+                # Force remove container even if it's running
+                subprocess.run(["docker", "rm", "-f", "postgres_container"], check=True)
+                print("[Auto-Update] Successfully removed old postgres container")
+                # Remove volume without -f flag
+                subprocess.run(["docker", "volume", "rm", "postgres_data"], check=True)
+                print("[Auto-Update] Successfully removed old postgres volume")
+                # Create new volume
+                subprocess.run(["docker", "volume", "create", "postgres_data"], check=True)
+                print("[Auto-Update] Successfully created postgres volume")
             except subprocess.CalledProcessError as e:
                 error_msg = f"Error cleaning up old database: {e}"
                 print(f"[Auto-Update] {error_msg}")
@@ -218,15 +224,19 @@ class AutoUpdate(threading.Thread):
                 return
         else:
             print("[Auto-Update] Using existing database volume...")
-
-        # Create volume (needed for both new and existing setups)
-        try:
-            subprocess.run(["docker", "volume", "create", "postgres_data"], capture_output=True, text=True)
-        except subprocess.CalledProcessError as e:
-            error_msg = f"Error creating database volume: {e}"
-            print(f"[Auto-Update] {error_msg}")
-            self.notify_update(error_msg)
-            return
+            # In non-CREATE_NEW_DB mode, ensure container is removed if it exists
+            try:
+                subprocess.run(["docker", "rm", "-f", "postgres_container"], check=False)
+                print("[Auto-Update] Cleaned up old postgres container")
+            except:
+                pass
+            
+            # Ensure postgres_data volume exists even in non-CREATE_NEW_DB mode
+            try:
+                subprocess.run(["docker", "volume", "create", "postgres_data"], check=False)
+                print("[Auto-Update] Ensured postgres_data volume exists")
+            except:
+                pass
 
         # Create and start database container
         print("[Auto-Update] Creating Database container...")
