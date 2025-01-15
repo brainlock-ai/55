@@ -27,6 +27,9 @@ def main():
 
     # Instantiate the model
     model = synthetic_cnv_2w2a(pre_trained=False)
+    
+    # Set the model to eval mode
+    model.eval()
 
     #torch.manual_seed(42)  # For reproducibility
     #for layer in model.features:
@@ -40,8 +43,6 @@ def main():
     checkpoint_path = Path(__file__).parent / "experiments/synthetic_model_checkpoint.pth"
     #torch.save({"state_dict": model.state_dict()}, checkpoint_path)
     #return
-    # Set the model to eval mode
-    model.eval()
 
     # Load the saved parameters using the available checkpoint
     checkpoint = torch.load(
