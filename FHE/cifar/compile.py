@@ -10,8 +10,10 @@ import torchvision
 import torchvision.transforms as transforms
 from concrete.fhe import Configuration, Exactness
 from concrete.compiler import check_gpu_available
-from models import cnv_2w2a, split_cnv_model
+from models import synthetic_cnv_2w2a
 import numpy as np
+from brevitas.nn import QuantConv2d
+from torch.nn import BatchNorm2d
 
 from concrete.ml.deployment import FHEModelDev
 from concrete.ml.torch.compile import compile_brevitas_qat_model
@@ -24,21 +26,37 @@ def main():
     #    model.load_state_dict(loaded["model_state_dict"])
 
     # Instantiate the model
-    model = cnv_2w2a(pre_trained=False)
+    model = synthetic_cnv_2w2a(pre_trained=False)
 
+    #torch.manual_seed(42)  # For reproducibility
+    #for layer in model.features:
+    #    if isinstance(layer, QuantConv2d):
+    #        torch.nn.init.xavier_uniform_(layer.weight)
+    #    elif isinstance(layer, BatchNorm2d):
+    #        torch.nn.init.constant_(layer.weight, 1.0)
+    #        torch.nn.init.constant_(layer.bias, 0.0)
+
+    # Save the model state to a checkpoint
+    checkpoint_path = Path(__file__).parent / "experiments/synthetic_model_checkpoint.pth"
+    #torch.save({"state_dict": model.state_dict()}, checkpoint_path)
+    #return
     # Set the model to eval mode
     model.eval()
 
     # Load the saved parameters using the available checkpoint
     checkpoint = torch.load(
-        Path(__file__).parent / "experiments/CNV_2W2A_2W2A_20221114_131345/checkpoints/best.tar",
+        #  Path(__file__).parent / "experiments/CNV_2W2A_2W2A_20221114_131345/checkpoints/best.tar",
+        checkpoint_path,
         map_location=torch.device("cpu"),
     )
     model.load_state_dict(checkpoint["state_dict"], strict=False)
     
-    # Split the model into convolutional and linear submodules
-    conv_splits, linear_splits = split_cnv_model(model)
-
+    dummy_input = torch.randn(1, 3, 32, 32)
+    
+    with torch.no_grad():
+        output = model(dummy_input)
+        assert dummy_input.shape == output.shape
+    
     IMAGE_TRANSFORM = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
     )
@@ -66,7 +84,7 @@ def main():
         [train_set[index][0] for index in range(min(num_samples, len(train_set)))]
     )
 
-    #compilation_onnx_path = "compilation_model.onnx"
+    compilation_onnx_path = "compilation_synthetic_model.onnx"
     print("Compiling the model ...")
     start_compile = time.time()
 
@@ -85,122 +103,32 @@ def main():
         use_insecure_key_cache=True,
         insecure_key_cache_location=KEYGEN_CACHE_DIR,
     )
-    # Initialize input for the first convolutional submodel
-    current_inputset = train_sub_set  # Original training dataset
 
-    print("before compiling")
-    compiled_conv_submodels = []
-    for i, conv_submodel in enumerate(conv_splits):
-        # Set ONNX file name for the submodel
-        conv_compilation_onnx_path = f"conv_submodel_{i + 1}.onnx"
-        
-        # Compile the current submodel
-        quantized_conv_module = compile_brevitas_qat_model(
-            torch_model=conv_submodel,
-            torch_inputset=current_inputset,  # Input for the current submodel
-            p_error=P_ERROR,
-            configuration=configuration,
-            output_onnx_file=conv_compilation_onnx_path,
-            rounding_threshold_bits={"method": Exactness.APPROXIMATE, "n_bits": 6},
-            n_bits={"model_inputs": 8, "model_outputs": 8},
-            device=DEVICE,
-        )
-        compiled_conv_submodels.append(quantized_conv_module)
-        print(f"Compiled convolutional submodel {i + 1}")
-        
-        # Update input for the next submodel
-        # Use the compiled module to generate outputs
-        # Process the entire batch at once
-        with torch.no_grad():  # Disable gradients for efficiency during compilation
-            #current_inputset = conv_submodel(current_inputset)
-            current_inputset = quantized_conv_module(current_inputset)
-
-    # Flatten the input for the linear submodels
-    with torch.no_grad():
-        # If the current input set is a numpy array, convert it to a PyTorch tensor
-        if isinstance(current_inputset, np.ndarray):
-            current_inputset = torch.tensor(current_inputset)
-        # Flatten the batch tensor for linear layers
-        current_inputset = torch.flatten(current_inputset, start_dim=1)
-
-    compiled_linear_submodels = []
-    for i, linear_submodel in enumerate(linear_splits):
-        # Set ONNX file name for the submodel
-        linear_compilation_onnx_path = f"linear_submodel_{i + 1}.onnx"
-        
-        # Compile the current submodel
-        quantized_linear_module = compile_brevitas_qat_model(
-            torch_model=linear_submodel,
-            torch_inputset=current_inputset,  # Flattened input for the current submodel
-            p_error=P_ERROR,
-            configuration=configuration,
-            output_onnx_file=linear_compilation_onnx_path,
-            rounding_threshold_bits={"method": Exactness.APPROXIMATE, "n_bits": 6},
-            n_bits={"model_inputs": 8, "model_outputs": 8},
-            device=DEVICE,
-        )
-        compiled_linear_submodels.append(quantized_linear_module)
-        print(f"Compiled linear submodel {i + 1}")
-        
-        # Update input for the next submodel
-        with torch.no_grad():  # Disable gradients for efficiency during compilation
-            #current_inputset = linear_submodel(current_inputset)
-            current_inputset = quantized_linear_module(current_inputset)
+    print("Before compiling")
 
     # Compile the quantized model
-    #quantized_numpy_module = compile_brevitas_qat_model(
-    #    torch_model=model,
-    #    torch_inputset=train_sub_set,
-    #    p_error=P_ERROR,
-    #    configuration=configuration,
-    #    output_onnx_file=compilation_onnx_path,
-    #    rounding_threshold_bits={"method": Exactness.APPROXIMATE, "n_bits": 6},
-    #    n_bits={"model_inputs": 8, "model_outputs": 8},
-    #)
+    quantized_numpy_module = compile_brevitas_qat_model(
+        torch_model=model,
+        torch_inputset=train_sub_set,
+        p_error=P_ERROR,
+        configuration=configuration,
+        output_onnx_file=compilation_onnx_path,
+        rounding_threshold_bits={"method": Exactness.APPROXIMATE, "n_bits": 6},
+        n_bits={"model_inputs": 8, "model_outputs": 8},
+    )
     end_compile = time.time()
     print(f"Compilation finished in {end_compile - start_compile:.2f} seconds")
 
     # Key generation
     print("Generating keys ...")
     start_keygen = time.time()
-    #quantized_numpy_module.fhe_circuit.keygen()
-    compiled_conv_circuits = []  # Store circuits for later use
-
-    for i, conv_module in enumerate(compiled_conv_submodels):
-        print(f"Generating FHE keys for convolutional submodel {i + 1}...")
-        conv_module.fhe_circuit.keygen()  # Generate FHE keys
-        compiled_conv_circuits.append(conv_module.fhe_circuit)
-        print(f"FHE keys generated for convolutional submodel {i + 1}.")
-
-        print("size_of_inputs", conv_module.fhe_circuit.size_of_inputs)
-        print("bootstrap_keys", conv_module.fhe_circuit.size_of_bootstrap_keys)
-        print("keyswitches",    conv_module.fhe_circuit.size_of_keyswitch_keys)
-
-    compiled_linear_circuits = []  # Store circuits for later use
-
-    for i, linear_module in enumerate(compiled_linear_submodels):
-        print(f"Generating FHE keys for linear submodel {i + 1}...")
-        linear_module.fhe_circuit.keygen()  # Generate FHE keys
-        compiled_linear_circuits.append(linear_module.fhe_circuit)
-        print(f"FHE keys generated for linear submodel {i + 1}.")
-
-        print("size_of_inputs", linear_module.fhe_circuit.size_of_inputs)
-        print("bootstrap_keys", linear_module.fhe_circuit.size_of_bootstrap_keys)
-        print("keyswitches",    linear_module.fhe_circuit.size_of_keyswitch_keys)
+    quantized_numpy_module.fhe_circuit.keygen()
 
     end_keygen = time.time()
     print(f"Keygen finished in {end_keygen - start_keygen:.2f} seconds")
 
-    for i, conv_module in enumerate(compiled_conv_submodels):
-        dev = FHEModelDev(path_dir=f"./models/conv{i}", model=conv_module)
-        dev.save()
-
-    for i, linear_module in enumerate(compiled_linear_submodels):
-        dev = FHEModelDev(path_dir=f"./models/linear{i}", model=linear_module)
-        dev.save()
-
-    #dev = FHEModelDev(path_dir="./dev", model=quantized_numpy_module)
-    #dev.save()
+    dev = FHEModelDev(path_dir="./dev", model=quantized_numpy_module)
+    dev.save()
 
 
 if __name__ == "__main__":

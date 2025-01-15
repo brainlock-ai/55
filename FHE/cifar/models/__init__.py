@@ -24,17 +24,17 @@
 import os
 from configparser import ConfigParser
 
-import torch
 from torch import hub
 
-__all__ = ["cnv_2w2a"]
+__all__ = ["cnv_2w2a", "synthetic_cnv_2w2a"]
 
 from .model import cnv
-from .submodel import split_cnv_model
+from .synthetic_model import synthetic_cnv
 
 
 model_impl = {
     "CNV": cnv,
+    "SYNTHETIC_CNV": synthetic_cnv
 }
 
 
@@ -64,3 +64,12 @@ def cnv_2w2a(pre_trained=False):
     ), "No online pre-trained network are available. Use --resume instead with a valid checkpoint."
     model, _ = model_with_cfg("cnv_2w2a", pre_trained)
     return model
+
+
+def synthetic_cnv_2w2a(pre_trained=False):
+    assert (
+        pre_trained == False
+    ), "No online pre-trained network are available. Use --resume instead with a valid checkpoint."
+    model, _ = model_with_cfg("synthetic_cnv_2w2a", pre_trained)
+    return model
+

@@ -12,6 +12,7 @@ import asyncio
 import io
 import json
 import os
+import struct
 from tempfile import NamedTemporaryFile
 import uuid
 import time
@@ -20,12 +21,12 @@ import base58
 import uvicorn
 import websockets
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import AsyncGenerator, Dict, List, Optional, Tuple
 from hashlib import blake2b, sha256
 from time import perf_counter
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile, Request, Response, Depends, File
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from loguru import logger
 from substrateinterface import Keypair
@@ -306,16 +307,6 @@ FILE_FOLDER = Path(__file__).parent
 KEY_PATH = Path(os.environ.get("KEY_PATH", FILE_FOLDER / Path("server_keys")))
 CLIENT_SERVER_PATH = Path(os.environ.get("PATH_TO_MODEL", FILE_FOLDER / "dev"))
 CLIENTS_ZIP_PATH = Path(os.environ.get("PATH_TO_MODEL", FILE_FOLDER / "compiled"))
-SUBMODELS = [
-    "conv0",
-    "conv1",
-    "conv2",
-    "conv3",
-    "conv4",
-    "conv5",
-    "linear0",
-    "linear1"
-]
 PORT = os.environ.get("PORT", "5000")
 
 fhe = FHEModelServer(str(CLIENT_SERVER_PATH.resolve()))
@@ -388,29 +379,6 @@ def create_zip(files):
             zipf.write(file, os.path.basename(file))
     return temp_file.name
 
-@app.get("/get_clients")
-async def get_clients(request: Request, _: None = Depends(verify_epistula_request)):
-    """Get submodels client.zip files with Epistula authentication.
-
-    Returns:
-        FileResponse: client.zip files
-
-    Raises:
-        HTTPException: if the files can't be found locally
-    """
-    paths_to_clients = [(CLIENTS_ZIP_PATH / submodel_name / "client.zip").resolve() for submodel_name in SUBMODELS]
-    if not all([path_to_client.exists() for path_to_client in paths_to_clients]):
-        raise HTTPException(status_code=404, detail="Could not find client.")
-    
-    zip_path = create_zip(paths_to_clients)
-
-    # Serve the ZIP file
-    response = FileResponse(zip_path, media_type="application/zip")
-
-    # Clean up the temporary file after sending the response
-    response.background = FastAPI.BackgroundTask(lambda: os.remove(zip_path))
-    return response
-
 @app.post("/add_key")
 async def add_key(
     request: Request,
@@ -429,11 +397,37 @@ async def add_key(
     KEYS[uid] = await key.read()
     return {"uid": uid}
 
+async def process_submodel(model: FHEModelServer, input_data: bytes, key: bytes, iterations: int) -> AsyncGenerator[bytes, None]:
+    """
+    Async generator to process input through the submodel and stream outputs.
+    Each output becomes the next input.
+    """
+    current_input = input_data
+    for i in range(iterations):
+        # Run the submodel
+        output = model.run(
+            serialized_encrypted_quantized_data=current_input,
+            serialized_evaluation_keys=key,
+        )
+        output_data = output.detach().numpy()
+
+        # Serialize the output (e.g., using struct or another method)
+        serialized_output = output_data.tobytes()
+        output_length = len(serialized_output)
+
+        # Yield the length of the chunk followed by the serialized output
+        yield struct.pack("<I", output_length)  # Send the length of the data
+        yield serialized_output  # Send the actual data
+
+        # The output of this execution becomes the input for the next execution
+        current_input = output_data
+
 @app.post("/compute")
 async def compute(
     request: Request,
     model_input: UploadFile = File(...),
     uid: str = Form(...),
+    iterations: int = Form(...),
     _: None = Depends(verify_epistula_request)
 ):
     """Compute the circuit over encrypted input with Epistula authentication."""
@@ -475,7 +469,11 @@ async def compute(
         logger.info(f"Total request time: {total_time:.4f}s")
         logger.info("-" * 40)  # Separator for readability
         
-        return response
+        # Stream the submodel outputs
+        return StreamingResponse(
+            process_submodel(input_data, iterations),
+            media_type="application/octet-stream"
+        )
 
     except Exception as e:
         logger.error(f"Error in compute endpoint: {str(e)}")

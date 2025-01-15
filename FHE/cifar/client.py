@@ -23,6 +23,7 @@ import aiohttp
 import asyncio
 import requests
 import traceback
+import numpy as np
 import bittensor as bt
 from pathlib import Path
 from models import cnv_2w2a
@@ -141,7 +142,29 @@ class EpistulaClient:
 
             # Read the chunk data
             chunk_data = await response.content.readexactly(layer_length)
-            yield chunk_data
+            yield chunk_data, time.time()
+
+    def compare_outputs(self, y_simulated, y_real, epsilon=1e-3, delta=0.01):
+        """
+        Compare simulated FHE outputs to real FHE outputs within defined tolerances.
+
+        Args:
+            y_simulated (np.ndarray): Simulated FHE output.
+            y_real (np.ndarray): Real FHE output from the miner.
+            epsilon (float): Absolute error tolerance.
+            delta (float): Relative error tolerance.
+
+        Returns:
+            bool: True if outputs are within tolerance, False otherwise.
+        """
+        # Example usage
+        # y_simulated = np.array([0.5, 0.3, 0.2])
+        # y_real = np.array([0.51, 0.29, 0.21])  # Real output from miner
+        absolute_error = np.abs(y_simulated - y_real)
+        relative_error = np.abs(y_simulated - y_real) / np.maximum(np.abs(y_simulated), 1e-6)
+
+        return np.all(absolute_error <= epsilon) and np.all(relative_error <= delta)
+
 
     async def query(self, image_index=None):
         """Main query method that can be called from validator."""
@@ -309,16 +332,36 @@ class EpistulaClient:
                                 continue
                             return None
 
-                        remote_results = []
-                        async for chunk_data in self.fetch_layer_outputs(response):
+                        chunk_stats = []
+                        async for chunk_data, chunk_reception_time in self.fetch_layer_outputs(response):
                             if not first_layer_response_time:
-                                first_layer_response_time = time.time()
+                                first_layer_response_time = chunk_reception_time
+
                             # Deserialize and decrypt the chunk
                             remote_result = self.fhe_client.deserialize_decrypt_dequantize(chunk_data)
-                            remote_results.append(remote_result)
-                        
-                        remote_pred = remote_results[-1].argmax(axis=1)[0]
 
+                            chunk_stats.append({
+                                "result": remote_result,
+                                "timestamp": chunk_reception_time
+                            })
+                        
+                        # the classification result is the last remote result received
+                        remote_pred = chunk_stats[-1]["result"].argmax(axis=1)[0]
+
+                        # Check if predictions match
+                        predictions_match = remote_pred == original_pred
+
+                        if predictions_match:
+                            # compare each chunk with the expected submodel output from its input
+                            
+                            
+                            for i in range(len(chunk_stats)): # todo hardcode this since we know how many submodels there are
+                                if i == 0:
+                                    chunk_simulated_output = self.fhe_client.run(original_input)
+                                else:
+                                    chunk_simulated_output = self.fhe_client.run(chunk_stat["result"])
+                                chunk_stat = chunk_stats[i]
+                                self.compare_outputs(chunk_simulated_output, chunk_stat["result"])
 
 
                         try:
