@@ -100,9 +100,8 @@ class SimplifiedReward:
             # Create stats dictionary for current response
             current_stats = {
                 "current_score": float(current_score),
-                "response_time": float(response_time),
-                "predictions_match": bool(predictions_match),
-                "failure_rate": float(0.0 if predictions_match else 1.0)
+                "response_time": float(average_inference_per_second),
+                "predictions_match": float(average_cosine_similarity)
             }
 
             # Add current response and its score to the database

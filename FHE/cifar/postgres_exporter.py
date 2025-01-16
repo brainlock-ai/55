@@ -161,9 +161,9 @@ class PostgresExporter:
                     # Update all metrics for this miner with NULL checks
                     if row.latest_score is not None:
                         self.miner_scores.labels(hotkey=hotkey).set(row.latest_score)
-                    if row.failure_rate is not None:
-                        prediction_accuracy = 1.0 - row.failure_rate
-                        self.prediction_accuracy.labels(hotkey=hotkey).set(prediction_accuracy)
+                    #if row.failure_rate is not None:
+                    #    prediction_accuracy = 1.0 - row.failure_rate
+                    #    self.prediction_accuracy.labels(hotkey=hotkey).set(prediction_accuracy)
                     if row.latest_response_time is not None:
                         self.miner_response_time.labels(hotkey=hotkey).set(row.latest_response_time)
                     if row.avg_score is not None:
@@ -178,13 +178,13 @@ class PostgresExporter:
                     #    self.failure_rate.labels(hotkey=hotkey).set(row.failure_rate)
                     
                     # Update request counters only if we have valid counts
-                    if row.total_requests is not None:
-                        success_count = int(row.total_requests * (1.0 - row.failure_rate))
-                        failure_count = row.total_requests - success_count
+                    #if row.total_requests is not None:
+                    #    success_count = int(row.total_requests * (1.0 - row.failure_rate))
+                    #    failure_count = row.total_requests - success_count
                         
                         # Set the counter values directly
-                        self.validation_requests.labels(status='success', hotkey=hotkey)._value.set(success_count)
-                        self.validation_requests.labels(status='failure', hotkey=hotkey)._value.set(failure_count)
+                    #    self.validation_requests.labels(status='success', hotkey=hotkey)._value.set(success_count)
+                    #    self.validation_requests.labels(status='failure', hotkey=hotkey)._value.set(failure_count)
 
         except Exception as e:
             logger.error(f"Error collecting metrics: {str(e)}")
