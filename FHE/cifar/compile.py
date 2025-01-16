@@ -128,6 +128,10 @@ def main():
     end_keygen = time.time()
     print(f"Keygen finished in {end_keygen - start_keygen:.2f} seconds")
 
+    print("size_of_inputs", quantized_numpy_module.fhe_circuit.size_of_inputs)
+    print("bootstrap_keys", quantized_numpy_module.fhe_circuit.size_of_bootstrap_keys)
+    print("keyswitches", quantized_numpy_module.fhe_circuit.size_of_keyswitch_keys)
+
     dev = FHEModelDev(path_dir="./dev", model=quantized_numpy_module)
     dev.save()
 
