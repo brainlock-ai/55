@@ -274,7 +274,7 @@ class EpistulaClient:
             
         return None
 
-    def build_body_and_headers(self, uid, encrypted_input):
+    def build_body_and_headers(self, uid, encrypted_input, iterations):
         boundary = b'----WebKitFormBoundary' + os.urandom(16).hex().encode('ascii')
             
         # Construct payload
@@ -292,6 +292,13 @@ class EpistulaClient:
             b'Content-Disposition: form-data; name="uid"\r\n',
             b'\r\n',
             str(uid).encode(),
+            b'\r\n'
+        ])
+        payload.extend([
+            b'--' + boundary + b'\r\n',
+            b'Content-Disposition: form-data; name="iterations"\r\n',
+            b'\r\n',
+            str(iterations).encode(),
             b'\r\n'
         ])
         payload.extend([
@@ -343,10 +350,13 @@ class EpistulaClient:
             clear_input = augmented_X.numpy()
             encrypted_input = self.fhe_client.quantize_encrypt_serialize(clear_input)
 
+            # How many times the miner should run the model in chain
+            iterations = random.randint(5, 10)
+
             # Send compute request
             url = f"{self.url}/compute"
             
-            body, headers = self.build_body_and_headers(uid, encrypted_input)
+            body, headers = self.build_body_and_headers(uid, encrypted_input, iterations)
             
             # start first timer
             start_send_message_time = time.time()
@@ -355,16 +365,13 @@ class EpistulaClient:
                 url, body, headers, max_retries=3, retry_delay=2
             )
             if not response or response.status != 200:
-                print(
-                    f"Compute request failed with status "
-                    f"{response.status if response else 'no response'}"
-                )
+                print(f"Compute request failed with status {response.status if response else 'no response'}")
                 return None
 
             previous_chunk_reception_time = start_send_message_time
             chunk_stats = []
 
-            async for chunk_data, chunk_reception_time in self.fetch_layer_outputs(response):
+            async for chunk_data, chunk_reception_time in self.fetch_layer_outputs(response, iterations):
                 # Deserialize and decrypt the chunk
                 remote_result = self.fhe_client.deserialize_decrypt_dequantize(chunk_data)
                 chunk_stats.append({

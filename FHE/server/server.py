@@ -8,15 +8,11 @@ Routes:
 All routes are protected with Epistula authentication.
 """
 
-import asyncio
-import io
-import json
 import os
+import json
 import struct
-from tempfile import NamedTemporaryFile
 import uuid
 import time
-import zipfile
 import base58
 import uvicorn
 import websockets
@@ -370,13 +366,6 @@ async def get_client(request: Request, _: None = Depends(verify_epistula_request
     if not path_to_client.exists():
         raise HTTPException(status_code=500, detail="Could not find client.")
     return FileResponse(path_to_client, media_type="application/zip")
-
-def create_zip(files):
-    temp_file = NamedTemporaryFile(delete=False, suffix=".zip")
-    with zipfile.ZipFile(temp_file.name, 'w') as zipf:
-        for file in files:
-            zipf.write(file, os.path.basename(file))
-    return temp_file.name
 
 @app.post("/add_key")
 async def add_key(
