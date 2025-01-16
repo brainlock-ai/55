@@ -16,7 +16,7 @@ class MinerHistory(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     hotkey = Column(String, index=True, nullable=False)
     response_time = Column(Float, nullable=False)
-    prediction_match = Column(Boolean, nullable=False)
+    prediction_match = Column(Float, nullable=False)
     score = Column(Float, nullable=True)
     timestamp = Column(DateTime, default=datetime.now(timezone.utc), nullable=False)
 
@@ -50,14 +50,15 @@ class SimplifiedReward:
         self.ALPHA = 3.0  # Shape parameter for Pareto distribution
         self.SCALE = 40.0  # Scale factor to normalize scores
 
-    def pareto_score(self, time):
+    def pareto_score(self, inference_speed_and_accuracy_score):
         """
         Calculate Pareto-based score for response time.
-        Score = (scale/x)^α where α is shape parameter.	
+        Score = (scale/x)^α where α is shape parameter and x being better as it decreases	
         This creates a heavy-tailed distribution favoring faster times.	
         Scores can exceed 1.0 for times below the scale factor.
         """
-        return pow(self.SCALE / time, self.ALPHA)
+        # A higher speed and accuracy score is better, so x = 1/y here
+        return pow(self.SCALE*inference_speed_and_accuracy_score, self.ALPHA)
 
     def _calculate_stats(self, values):
         """Calculate mean, median, and standard deviation of a sequence"""
@@ -71,109 +72,20 @@ class SimplifiedReward:
             np.std(values_array) if len(values_array) > 1 else 0
         )
 
-    def calculate_ips_score(self, inference_per_second: float, predictions_match: bool, hotkey: str) -> tuple[float, dict]:
-        """
-        Calculate inference per second score for the current response and store it in the database.
-        Each response is scored immediately using the Pareto distribution.
-        Historical statistics are calculated from up to 40 most recent entries.
-        
-        Args:
-            response_time (float): Time taken for the computation	
-            predictions_match (bool): Whether predictions matched the original model	
-            hotkey (str): The miner's hotkey for tracking history (required)	
-        
-        Returns:	
-            tuple[float, dict]: (current_score, statistics_dict)	
-            - current_score: Score for this specific response (>= 0)
-            - statistics_dict: Historical statistics from up to 40 most recent entries
-        """
-        if not hotkey:
-            raise ValueError("hotkey is required and cannot be None or empty")
-
-        session = self.Session()
-
-        try:
-            # Score this specific response using Pareto distribution
-            current_score = self.pareto_score(response_time) if predictions_match else 0.0
-
-            # Add current response and its score to the database
-            new_entry = MinerHistory(
-                hotkey=hotkey, 
-                response_time=response_time, 
-                prediction_match=predictions_match,
-                score=current_score  # Store the score for this specific response
-            )
-            session.add(new_entry)
-            session.commit()
-
-            # Get historical statistics from up to 40 most recent entries (including this one)
-            stats_query = text("""
-                WITH recent_history AS (
-                    SELECT 
-                        response_time,
-                        prediction_match,
-                        score,
-                        ROW_NUMBER() OVER (PARTITION BY hotkey ORDER BY timestamp DESC) as rn
-                    FROM miner_history
-                    WHERE hotkey = :hotkey
-                ),
-                last_40_entries AS (
-                    SELECT *
-                    FROM recent_history
-                    WHERE rn <= 40
-                )
-                SELECT 
-                    AVG(response_time) as rt_mean,
-                    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY response_time) as rt_median,
-                    STDDEV(response_time) as rt_std,
-                    AVG(score) as score_mean,
-                    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY score) as score_median,
-                    STDDEV(score) as score_std,
-                    1.0 - (SUM(CASE WHEN prediction_match THEN 1 ELSE 0 END)::float / COUNT(*)) as failure_rate,
-                    COUNT(*) as entry_count
-                FROM last_40_entries;
-            """)
-            
-            result = session.execute(stats_query, {"hotkey": hotkey}).fetchone()
-            
-            stats = {
-                "current_score": current_score,  # Add the current response's score to stats
-                "response_time_stats": (
-                    result.rt_mean if result.rt_mean is not None else 0.0,
-                    result.rt_median if result.rt_median is not None else 0.0,
-                    result.rt_std if result.rt_std is not None else 0.0
-                ),
-                "score_stats": (
-                    result.score_mean if result.score_mean is not None else 0.0,
-                    result.score_median if result.score_median is not None else 0.0,
-                    result.score_std if result.score_std is not None else 0.0
-                ),
-                "failure_rate": result.failure_rate if result.failure_rate is not None else 0.0,
-                "entry_count": result.entry_count if result.entry_count is not None else 1
-            }
-
-            return current_score, stats
-
-        except Exception as e:
-            session.rollback()
-            raise e
-        finally:
-            session.close()
-
-
-    def calculate_score(self, response_time: float, predictions_match: bool, hotkey: str) -> tuple[float, dict]:
+    def calculate_score(self, inference_speed_and_accuracy_score: float, average_inference_per_second: float, average_cosine_similarity: float, hotkey: str) -> tuple[float, dict]:
         """
         Deprecated
         Calculate score for the current response and store it in the database.
         Each response is scored immediately using the Pareto distribution.
         Historical statistics are calculated from up to 40 most recent entries.
         
-        Args:	
-            response_time (float): Time taken for the computation	
-            predictions_match (bool): Whether predictions matched the original model	
+        Args:
+            inference_speed_and_accuracy_score (float): Average inference per second multiplied by the average cosine similarity
+            average_inference_per_second (float): Average number computation or inference per second
+            average_cosine_similarity (float): Average cosine similarity between the miner's outputs and the non-quantized non-fhe output	
             hotkey (str): The miner's hotkey for tracking history (required)	
             	
-        Returns:	
+        Returns:
             tuple[float, dict]: (current_score, statistics_dict)	
             - current_score: Score for this specific response (>= 0)
             - statistics_dict: Historical statistics from up to 40 most recent entries
@@ -185,14 +97,14 @@ class SimplifiedReward:
 
         try:
             # Score this specific response using Pareto distribution
-            current_score = self.pareto_score(response_time) if predictions_match else 0.0
+            current_score = self.pareto_score(inference_speed_and_accuracy_score)
 
             # Add current response and its score to the database
             new_entry = MinerHistory(
                 hotkey=hotkey, 
-                response_time=response_time, 
-                prediction_match=predictions_match,
-                score=current_score  # Store the score for this specific response
+                response_time=average_inference_per_second,
+                prediction_match=average_cosine_similarity,
+                score=inference_speed_and_accuracy_score
             )
             session.add(new_entry)
             session.commit()
@@ -220,7 +132,6 @@ class SimplifiedReward:
                     AVG(score) as score_mean,
                     PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY score) as score_median,
                     STDDEV(score) as score_std,
-                    1.0 - (SUM(CASE WHEN prediction_match THEN 1 ELSE 0 END)::float / COUNT(*)) as failure_rate,
                     COUNT(*) as entry_count
                 FROM last_40_entries;
             """)
@@ -239,7 +150,6 @@ class SimplifiedReward:
                     result.score_median if result.score_median is not None else 0.0,
                     result.score_std if result.score_std is not None else 0.0
                 ),
-                "failure_rate": result.failure_rate if result.failure_rate is not None else 0.0,
                 "entry_count": result.entry_count if result.entry_count is not None else 1
             }
 

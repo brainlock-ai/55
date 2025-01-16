@@ -419,7 +419,7 @@ class Validator:
                                     logger.info(f"Score stats for miner {uid} - Mean: {mean:.6f}, Median: {median:.6f}, Std: {std:.6f}")
                                 
                                 stats = result.get('stats', {})
-                                predictions_match = stats.get('predictions_match', True)
+                                # average_cosine_similarity = stats.get('average_cosine_similarity', True)
                                 
                                 logger.info(f"Recorded validation for miner {uid} with duration {duration:.2f}s")
                             else:

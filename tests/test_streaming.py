@@ -2,15 +2,18 @@ import asyncio
 import pytest
 import uvicorn
 import struct
-
+import os
 import httpx
+from pathlib import Path
+from unittest import mock
 from multiprocessing import Process
 
-from FHE.server.server import app
 
 
 @pytest.mark.asyncio
+@mock.patch.dict(os.environ, {"MINER_HOTKEY": "test_value"}, clear=True)
 async def test_streaming_interaction():
+    from FHE.server.server import app  # Will raise ValueError if MINER_HOTKEY isn't set
     """
     Integration test:
     1. Starts the miner/server (FastAPI) in the background.

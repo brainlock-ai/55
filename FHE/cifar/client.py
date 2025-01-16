@@ -128,11 +128,11 @@ class EpistulaClient:
             print(traceback.format_exc())
             raise
     
-    async def fetch_layer_outputs(self, response):
+    async def fetch_layer_outputs(self, response, iterations):
         """
         Asynchronous generator to fetch layer outputs with length-prefixed chunks.
         """
-        while True:
+        for i in range(iterations):
             # Read the length header (4 bytes)
             length_bytes = await response.content.readexactly(4)
             layer_length = struct.unpack("<I", length_bytes)[0]
@@ -145,18 +145,20 @@ class EpistulaClient:
             chunk_data = await response.content.readexactly(layer_length)
             yield chunk_data, time.time()
 
-    def compare_outputs(self, reference_output, actual_output):
+    def compare_outputs_with_cosine_sim(self, reference_output, actual_output):
         """
-        Compare two 4D outputs (shape (1, 3, 32, 32)) and return a similarity score in [0, 1].
-        1 indicates an exact match, while 0 means a large difference.
+        Compare two outputs using cosine similarity, returning a score in [0, 1].
+        1 indicates the two outputs are perfectly aligned (cosine_sim = +1).
+        0 indicates they point in opposite directions (cosine_sim = -1).
 
         Steps:
-        1. Move reference_output and actual_output to CPU numpy arrays, if they're torch Tensors.
-        2. Compute L2 distance (Euclidean norm) between them.
-        3. Convert distance to a similarity score via exp(-alpha * distance).
+        1. Convert inputs to CPU numpy arrays if they're torch Tensors.
+        2. Flatten both arrays into 1D vectors.
+        3. Compute the dot product and norms to get the standard cosine similarity in [-1, +1].
+        4. Transform it into a [0, 1] range via (1 + cos_sim) / 2.
 
-        :param reference_output: The 'accurate' or reference result, shape (1,3,32,32).
-        :param actual_output:    The 'chunk' or submodel result, shape (1,3,32,32).
+        :param reference_output: The 'accurate' or reference result (tensor or array).
+        :param actual_output:    The 'chunk' or submodel result (tensor or array).
         :return:                 A float similarity score in [0, 1].
         """
 
@@ -166,16 +168,27 @@ class EpistulaClient:
         if isinstance(actual_output, torch.Tensor):
             actual_output = actual_output.detach().cpu().numpy()
 
-        # 2) Compute the L2 distance (Euclidean norm) between the outputs
-        diff = reference_output - actual_output
-        l2_distance = np.linalg.norm(diff)
+        # 2) Flatten both arrays
+        ref_vec = reference_output.ravel()
+        act_vec = actual_output.ravel()
 
-        # 3) Map the distance to a similarity score
-        #    Adjust alpha to tune how quickly the similarity drops
-        alpha = 0.1
-        exactness_score = np.exp(-alpha * l2_distance)
+        # Avoid division by zero in case of zero vectors
+        ref_norm = np.linalg.norm(ref_vec)
+        act_norm = np.linalg.norm(act_vec)
+        if ref_norm == 0 or act_norm == 0:
+            # If either vector is all zeros, define similarity = 1 if both are zeros, else 0
+            if ref_norm == 0 and act_norm == 0:
+                return 1.0
+            else:
+                return 0.0
 
-        return exactness_score
+        # 3) Compute standard cosine similarity in [-1, 1]
+        dot_product = np.dot(ref_vec, act_vec)
+        cos_sim = dot_product / (ref_norm * act_norm)
+
+        # 4) Transform cosine similarity to [0, 1]
+        score = (1.0 + cos_sim) / 2.0
+        return score
 
     async def get_client_zip(self):
         # Get client.zip using aiohttp with improved error handling
@@ -354,13 +367,11 @@ class EpistulaClient:
             async for chunk_data, chunk_reception_time in self.fetch_layer_outputs(response):
                 # Deserialize and decrypt the chunk
                 remote_result = self.fhe_client.deserialize_decrypt_dequantize(chunk_data)
-                chunk_stats.append(
-                    {
-                        "result": remote_result,
-                        "timestamp": chunk_reception_time,
-                        "inference_time": previous_chunk_reception_time - chunk_reception_time,
-                    }
-                )
+                chunk_stats.append({
+                    "result": remote_result,
+                    "timestamp": chunk_reception_time,
+                    "inference_time": previous_chunk_reception_time - chunk_reception_time,
+                })
                 previous_chunk_reception_time = chunk_reception_time
 
             if not chunk_stats:
@@ -376,16 +387,14 @@ class EpistulaClient:
                     previous_chunk_result = chunk_stats[i - 1]["result"]
                     chunk_simulated_output = self.fhe_client.run(previous_chunk_result)
 
-                chunk_score = self.compare_outputs(chunk_simulated_output, chunk_stat["result"])
-            total_score += chunk_score
+                chunk_cosine_similarity_score = self.compare_outputs_with_cosine_sim(chunk_simulated_output, chunk_stat["result"])
+                total_score += chunk_cosine_similarity_score
 
-            average_score = total_score / len(chunk_stats)
+            average_cosine_similarity = total_score / len(chunk_stats)
             
             # Times for inferences (one chunk == one inference, if that's your assumption)
             inference_times = [cs["inference_time"] for cs in chunk_stats]
-            average_inference_time = sum(inference_times)/len(inference_times)
 
-            start_inference_time = inference_times[0]
             end_inference_time = inference_times[-1]
 
             # Total time from request-sent to last inference
@@ -393,39 +402,39 @@ class EpistulaClient:
 
             # "inferences (or models) per second"
             num_inferences = len(chunk_stats)  # If each chunk is a single inference
-            model_inference_per_second = num_inferences / total_time if total_time > 0 else 0.0
+            average_inference_per_second = num_inferences / total_time if total_time > 0 else 0.0
 
             # Check if the server might have buffered results
             # e.g. by looking at the time to the 20th percentile inference
-            non_streamed = False
             if num_inferences >= 5:
                 twenty_percent_index = math.ceil(num_inferences * 0.20)
-                time_to_twentieth_percent = inference_times[twenty_percent_index] - start_send_message_time
+                time_to_twentieth_percent = (
+                    inference_times[twenty_percent_index] - start_send_message_time
+                )
 
-                # If 5% of the inferences arrived after 75% of total time,
+                # If the first 20% of the inferences arrived after 70% of total time,
                 # it's likely non-streamed
-                if time_to_twentieth_percent / total_time >= 0.75:
-                    non_streamed = True
+                if time_to_twentieth_percent / total_time >= 0.70:
                     print("Likely non-streamed response detected.")
+                    return None
 
-            print(f"Final average score: {average_score:.4f}")
+            print(f"Final average cosine similarity: {average_cosine_similarity:.4f}")
+            inference_speed_and_accuracy_score = average_inference_per_second * average_cosine_similarity
+            print(f"Inference score: {inference_speed_and_accuracy_score:.4f}")
             # Calculate final score using SimplifiedReward
-            score, stats = self.reward_model.calculate_ips_score(
-                inference_per_second=model_inference_per_second,
-                average_score=average_score,
+            score, stats = self.reward_model.calculate_score(
+                inference_speed_and_accuracy_score=inference_speed_and_accuracy_score,
+                average_inference_per_second=average_inference_per_second,
+                average_cosine_similarity=average_cosine_similarity,
                 hotkey=self.hotkey
             )
             
-            # Add predictions_match to stats
-            stats["predictions_match"] = predictions_match
-            stats["elapsed_time"] = elapsed_time
+            stats["average_cosine_similarity"] = average_cosine_similarity
+            stats["elapsed_time"] = total_time
             
             # Print results with predictions
             print("\nScoring Results:")
-            print(f"Time taken: {elapsed_time:.2f}s")
-            print(f"Remote prediction: {remote_pred}")
-            print(f"Original prediction: {original_pred}")
-            print(f"Prediction match: {'Yes' if predictions_match else 'No'}")
+            print(f"Time taken: {total_time:.2f}s")
             print(f"Final score: {score:.2%}")
             
             # Print detailed stats
@@ -433,16 +442,12 @@ class EpistulaClient:
             print(f"Response time stats - Mean: {rt_mean:.2f}s, Median: {rt_median:.2f}s, Std: {rt_std:.2f}s")
             score_mean, score_median, score_std = stats["score_stats"]
             print(f"Score stats - Mean: {score_mean:.2%}, Median: {score_median:.2%}, Std: {score_std:.2%}")
-            print(f"Failure rate: {stats['failure_rate']:.2%}")
-
+            
             return {
                 'score': score,
                 'stats': stats,
-                'elapsed_time': elapsed_time,
-                'predictions_match': predictions_match,
-                'true_label': true_label.item(),
-                'remote_pred': int(remote_pred),
-                'original_pred': int(original_pred),
+                'elapsed_time': total_time,
+                'average_cosine_similarity': average_cosine_similarity,
                 'augmentation_seed': augmentation_seed
             }
 

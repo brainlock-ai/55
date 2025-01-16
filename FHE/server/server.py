@@ -306,7 +306,6 @@ FILE_FOLDER = Path(__file__).parent
 
 KEY_PATH = Path(os.environ.get("KEY_PATH", FILE_FOLDER / Path("server_keys")))
 CLIENT_SERVER_PATH = Path(os.environ.get("PATH_TO_MODEL", FILE_FOLDER / "dev"))
-CLIENTS_ZIP_PATH = Path(os.environ.get("PATH_TO_MODEL", FILE_FOLDER / "compiled"))
 PORT = os.environ.get("PORT", "5000")
 
 fhe = FHEModelServer(str(CLIENT_SERVER_PATH.resolve()))
@@ -397,7 +396,7 @@ async def add_key(
     KEYS[uid] = await key.read()
     return {"uid": uid}
 
-async def process_submodel(model: FHEModelServer, input_data: bytes, key: bytes, iterations: int) -> AsyncGenerator[bytes, None]:
+async def process_submodel(model: FHEModelServer, input_data: bytes, key: bytes, iterations: int, timer: TimingStats) -> AsyncGenerator[bytes, None]:
     """
     Async generator to process input through the submodel and stream outputs.
     Each output becomes the next input.
@@ -405,10 +404,15 @@ async def process_submodel(model: FHEModelServer, input_data: bytes, key: bytes,
     current_input = input_data
     for i in range(iterations):
         # Run the submodel
+        
+        # Time FHE computation
+        timer.start("fhe_computation")
         output = model.run(
             serialized_encrypted_quantized_data=current_input,
             serialized_evaluation_keys=key,
         )
+        computation_time = timer.end("fhe_computation")
+        logger.info(f"Computation time: {computation_time:.4f}s")
         output_data = output.detach().numpy()
 
         # Serialize the output (e.g., using struct or another method)
@@ -421,6 +425,11 @@ async def process_submodel(model: FHEModelServer, input_data: bytes, key: bytes,
 
         # The output of this execution becomes the input for the next execution
         current_input = output_data
+    
+    # Log total time
+    total_time = timer.end("total")
+    logger.info(f"Total request time: {total_time:.4f}s")
+    logger.info("-" * 40)  # Separator for readability
 
 @app.post("/compute")
 async def compute(
@@ -448,30 +457,9 @@ async def compute(
         input_data = await model_input.read()
         timer.end("input_read")
         
-        # Time FHE computation
-        timer.start("fhe_computation")
-        encrypted_results = fhe.run(
-            serialized_encrypted_quantized_data=input_data,
-            serialized_evaluation_keys=key,
-        )
-        timer.end("fhe_computation")
-
-        # Time response creation
-        timer.start("response_creation")
-        response = Response(
-            content=encrypted_results,
-            media_type="application/octet-stream"
-        )
-        timer.end("response_creation")
-
-        # Log total time
-        total_time = timer.end("total")
-        logger.info(f"Total request time: {total_time:.4f}s")
-        logger.info("-" * 40)  # Separator for readability
-        
         # Stream the submodel outputs
         return StreamingResponse(
-            process_submodel(input_data, iterations),
+            process_submodel(fhe, input_data, key, iterations, timer),
             media_type="application/octet-stream"
         )
 
