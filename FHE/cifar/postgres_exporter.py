@@ -105,7 +105,7 @@ class PostgresExporter:
                 active_miners_query = text("""
                     SELECT COUNT(DISTINCT hotkey) 
                     FROM miner_history 
-                    WHERE timestamp >= NOW() - INTERVAL '1 hour'
+                    WHERE timestamp >= NOW() - INTERVAL '6 hours'
                 """)
                 active_count = conn.execute(active_miners_query).scalar() or 0
                 self.active_miners.set(active_count)
@@ -115,39 +115,40 @@ class PostgresExporter:
                     WITH recent_records AS (
                         SELECT 
                             hotkey,
-                            response_time,
-                            prediction_match,
                             score,
+                            stats::json as stats_json,
                             timestamp,
                             ROW_NUMBER() OVER (PARTITION BY hotkey ORDER BY timestamp DESC) as rn
                         FROM miner_history
-                        WHERE timestamp >= NOW() - INTERVAL '1 hour'
+                        WHERE timestamp >= NOW() - INTERVAL '6 hours'
+                        AND stats IS NOT NULL
                     ),
                     miner_aggregates AS (
                         SELECT 
                             hotkey,
-                            AVG(response_time) as avg_response_time,
-                            STDDEV(response_time) as std_response_time,
-                            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY response_time) as median_response_time,
                             AVG(score) as avg_score,
                             COUNT(*) as total_requests,
-                            SUM(CASE WHEN prediction_match THEN 1 ELSE 0 END)::float / COUNT(*) as prediction_accuracy
+                            AVG((stats_json->>'response_time')::float) as avg_response_time,
+                            STDDEV((stats_json->>'response_time')::float) as std_response_time,
+                            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (stats_json->>'response_time')::float) as median_response_time
                         FROM recent_records
-                        WHERE rn <= 40  -- Keep last 40 records like in scoring.py
+                        WHERE rn <= 40  -- Keep last 40 records
                         GROUP BY hotkey
                     ),
                     latest_values AS (
                         SELECT 
                             hotkey,
-                            response_time as latest_response_time,
-                            score as latest_score
+                            (stats_json->>'response_time')::float as latest_response_time,
+                            score as latest_score,
+                            (stats_json->>'predictions_match')::boolean as latest_predictions_match
                         FROM recent_records
                         WHERE rn = 1
                     )
                     SELECT 
                         a.*,
                         l.latest_response_time,
-                        l.latest_score
+                        l.latest_score,
+                        l.latest_predictions_match
                     FROM miner_aggregates a
                     JOIN latest_values l ON a.hotkey = l.hotkey
                 """)
@@ -160,8 +161,9 @@ class PostgresExporter:
                     # Update all metrics for this miner with NULL checks
                     if row.latest_score is not None:
                         self.miner_scores.labels(hotkey=hotkey).set(row.latest_score)
-                    if row.prediction_accuracy is not None:
-                        self.prediction_accuracy.labels(hotkey=hotkey).set(row.prediction_accuracy)
+                    if row.failure_rate is not None:
+                        prediction_accuracy = 1.0 - row.failure_rate
+                        self.prediction_accuracy.labels(hotkey=hotkey).set(prediction_accuracy)
                     if row.latest_response_time is not None:
                         self.miner_response_time.labels(hotkey=hotkey).set(row.latest_response_time)
                     if row.avg_score is not None:
@@ -176,8 +178,8 @@ class PostgresExporter:
                     #    self.failure_rate.labels(hotkey=hotkey).set(row.failure_rate)
                     
                     # Update request counters only if we have valid counts
-                    if row.total_requests is not None and row.prediction_accuracy is not None:
-                        success_count = int(row.total_requests * row.prediction_accuracy)
+                    if row.total_requests is not None:
+                        success_count = int(row.total_requests * (1.0 - row.failure_rate))
                         failure_count = row.total_requests - success_count
                         
                         # Set the counter values directly

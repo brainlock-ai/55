@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import statistics
 import os
 import numpy as np
+import json
 
 # Create Base at module level so it can be imported
 Base = declarative_base()
@@ -18,7 +19,8 @@ class MinerHistory(Base):
     response_time = Column(Float, nullable=False)
     prediction_match = Column(Float, nullable=False)
     score = Column(Float, nullable=True)
-    timestamp = Column(DateTime, default=datetime.now(timezone.utc), nullable=False)
+    stats = Column(String, nullable=True)  # JSON string containing response time, prediction match, etc.
+    timestamp = Column(DateTime, default=datetime.now(timezone.utc), nullable=False, index=True)
 
 def create_tables_if_not_exist(engine):
     """Create tables only if they don't exist."""
@@ -31,10 +33,6 @@ def create_tables_if_not_exist(engine):
 
 # SimplifiedReward class
 class SimplifiedReward:
-    """
-    This is a simplified version, where vTrust should be more stable. We will work on
-    using a ranging "scale" factor based on the top k % of miner's response times
-    """
     def __init__(self, db_url=None):
         if db_url is None:
             db_url = f"postgresql://{os.getenv('POSTGRES_USER', 'user')}:{os.getenv('POSTGRES_PASSWORD', 'password')}@{os.getenv('POSTGRES_HOST', 'localhost')}:{os.getenv('POSTGRES_PORT', '5432')}/{os.getenv('POSTGRES_DB', 'miner_data')}"
@@ -74,10 +72,10 @@ class SimplifiedReward:
 
     def calculate_score(self, inference_speed_and_accuracy_score: float, average_inference_per_second: float, average_cosine_similarity: float, hotkey: str) -> tuple[float, dict]:
         """
-        Deprecated
         Calculate score for the current response and store it in the database.
         Each response is scored immediately using the Pareto distribution.
         Historical statistics are calculated from up to 40 most recent entries.
+        Stored in the database
         
         Args:
             inference_speed_and_accuracy_score (float): Average inference per second multiplied by the average cosine similarity
@@ -99,31 +97,48 @@ class SimplifiedReward:
             # Score this specific response using Pareto distribution
             current_score = self.pareto_score(inference_speed_and_accuracy_score)
 
+            # Create stats dictionary for current response
+            current_stats = {
+                "current_score": float(current_score),
+                "response_time": float(response_time),
+                "predictions_match": bool(predictions_match),
+                "failure_rate": float(0.0 if predictions_match else 1.0)
+            }
+
             # Add current response and its score to the database
             new_entry = MinerHistory(
                 hotkey=hotkey, 
                 response_time=average_inference_per_second,
                 prediction_match=average_cosine_similarity,
-                score=inference_speed_and_accuracy_score
+                score=float(inference_speed_and_accuracy_score),
+                stats=json.dumps(current_stats)
             )
             session.add(new_entry)
             session.commit()
 
-            # Get historical statistics from up to 40 most recent entries (including this one)
+            # Get historical statistics from up to 40 most recent entries
             stats_query = text("""
                 WITH recent_history AS (
                     SELECT 
-                        response_time,
-                        prediction_match,
                         score,
+                        stats::json as stats_json,
                         ROW_NUMBER() OVER (PARTITION BY hotkey ORDER BY timestamp DESC) as rn
                     FROM miner_history
                     WHERE hotkey = :hotkey
+                    AND timestamp >= NOW() - INTERVAL '6 hours'
+                    AND stats IS NOT NULL
                 ),
                 last_40_entries AS (
                     SELECT *
                     FROM recent_history
                     WHERE rn <= 40
+                ),
+                response_times AS (
+                    SELECT 
+                        (stats_json->>'response_time')::float as response_time,
+                        score,
+                        (stats_json->>'predictions_match')::boolean as predictions_match
+                    FROM last_40_entries
                 )
                 SELECT 
                     AVG(response_time) as rt_mean,
@@ -133,24 +148,27 @@ class SimplifiedReward:
                     PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY score) as score_median,
                     STDDEV(score) as score_std,
                     COUNT(*) as entry_count
-                FROM last_40_entries;
+                FROM response_times;
             """)
             
             result = session.execute(stats_query, {"hotkey": hotkey}).fetchone()
             
+            # Prepare aggregated stats
             stats = {
-                "current_score": current_score,  # Add the current response's score to stats
+                "current_score": float(current_score),
+                "response_time": float(response_time),
+                "predictions_match": bool(predictions_match),
                 "response_time_stats": (
-                    result.rt_mean if result.rt_mean is not None else 0.0,
-                    result.rt_median if result.rt_median is not None else 0.0,
-                    result.rt_std if result.rt_std is not None else 0.0
+                    float(result.rt_mean if result.rt_mean is not None else response_time),
+                    float(result.rt_median if result.rt_median is not None else response_time),
+                    float(result.rt_std if result.rt_std is not None else 0.0)
                 ),
                 "score_stats": (
-                    result.score_mean if result.score_mean is not None else 0.0,
-                    result.score_median if result.score_median is not None else 0.0,
-                    result.score_std if result.score_std is not None else 0.0
+                    float(result.score_mean if result.score_mean is not None else current_score),
+                    float(result.score_median if result.score_median is not None else current_score),
+                    float(result.score_std if result.score_std is not None else 0.0)
                 ),
-                "entry_count": result.entry_count if result.entry_count is not None else 1
+                "entry_count": int(result.entry_count if result.entry_count is not None else 1)
             }
 
             return current_score, stats
