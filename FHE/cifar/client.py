@@ -32,6 +32,7 @@ from epistula import EpistulaAuth
 from scoring import SimplifiedReward
 from torchvision import datasets, transforms
 from concrete.ml.deployment import FHEModelClient
+from concrete.ml.quantization import QuantizedArray
 
 
 # Add the correct models directory to the Python path
@@ -401,8 +402,14 @@ class EpistulaClient:
             print(f"scaled_input min/max: {scaled_input.min()}/{scaled_input.max()}")
             print(f"unique values: {np.unique(scaled_input)}")
 
-            encrypted_input = self.fhe_client.quantize_encrypt_serialize(scaled_input)
+            qa = QuantizedArray(
+                n_bits=8,              # 8-bit quantization
+                values=scaled_input,   # Input data
+                is_signed=True         # Ensure signed integers
+            )
 
+            encrypted_input = self.fhe_client.quantize_encrypt_serialize(qa.qvalues)
+            print(f"Encrypted input type: {type(encrypted_input)}")
             # How many times the miner should run the model in chain
             iterations = random.randint(5, 10)
 

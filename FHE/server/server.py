@@ -158,28 +158,28 @@ class EpistulaVerifier:
         # Disabled stake verification - accept all
         return True, 0, ""
         
-        # current_time = time.time()
+        current_time = time.time()
         
-        # # Check cache first
-        # if hotkey in self.stake_cache:
-        #     timestamp, stake, valid = self.stake_cache[hotkey]
-        #     if current_time - timestamp < self.cache_duration:
-        #         logger.debug(f"Using cached stake for {hotkey}: {stake}")
-        #         return valid, stake, ""
+        # Check cache first
+        if hotkey in self.stake_cache:
+            timestamp, stake, valid = self.stake_cache[hotkey]
+            if current_time - timestamp < self.cache_duration:
+                logger.debug(f"Using cached stake for {hotkey}: {stake}")
+                return valid, stake, ""
 
-        # # If not in cache or cache expired, verify with endpoint
-        # try:
-        #     stake = await self.get_stake_from_hotkey(hotkey)
+        # If not in cache or cache expired, verify with endpoint
+        try:
+            stake = await self.get_stake_from_hotkey(hotkey)
+           
+            # Update cache
+            self.stake_cache[hotkey] = (current_time, stake, True)
+          
+            # Accept any stake amount
+            return True, stake, ""
             
-        #     # Update cache
-        #     self.stake_cache[hotkey] = (current_time, stake, True)
-            
-        #     # Accept any stake amount
-        #     return True, stake, ""
-            
-        # except Exception as e:
-        #     logger.error(f"Stake verification error: {str(e)}")
-        #     return False, 0, str(e)
+        except Exception as e:
+            logger.error(f"Stake verification error: {str(e)}")
+            return False, 0, str(e)
 
     async def verify_signature(
         self,
