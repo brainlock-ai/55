@@ -462,7 +462,7 @@ class EpistulaClient:
         except Exception as e:
             print(f"Error during query for IP {self.url}: {str(e)}")
             import traceback
-            traceback.print_exc()
+            print(traceback.format_exc())
             return None
         finally:
             self._cleanup_files()
