@@ -79,6 +79,11 @@ class SyntheticCNV(Module):
             )
         )
 
+        # Initialize weights in case it doesn't work in compile.py
+        #for layer in self.features:
+        #    if isinstance(layer, QuantConv2d):
+        #        torch.nn.init.kaiming_uniform_(layer.weight, a=math.sqrt(5))
+
     def clip_weights(self, min_val, max_val):
         for mod in self.features:
             if isinstance(mod, QuantConv2d):
@@ -86,10 +91,7 @@ class SyntheticCNV(Module):
 
     def forward(self, x):
         for idx, mod in enumerate(self.features):
-            if isinstance(mod, QuantConv2d):
-                print(f"Conv2d weights (layer {idx}): {mod.weight}")
             x = mod(x)
-            print(f"Output of layer {idx}: {x}")
         return x
 
 

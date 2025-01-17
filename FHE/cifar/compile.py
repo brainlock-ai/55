@@ -110,8 +110,6 @@ def main():
         insecure_key_cache_location=KEYGEN_CACHE_DIR,
     )
 
-    print("Before compiling")
-
     # Compile the quantized model
     quantized_numpy_module = compile_brevitas_qat_model(
         torch_model=model,
