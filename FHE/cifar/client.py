@@ -383,6 +383,17 @@ class EpistulaClient:
 
             # Use same augmented input for FHE inference
             clear_input = augmented_X.numpy()
+
+            print(f"clear_input dtype: {clear_input.dtype}")
+            print(f"clear_input min/max: {clear_input.min()}/{clear_input.max()}")
+            print(f"unique values: {np.unique(clear_input)}")
+
+            clear_input = clear_input.astype(np.int8)
+
+            print(f"clear_input dtype: {clear_input.dtype}")
+            print(f"clear_input min/max: {clear_input.min()}/{clear_input.max()}")
+            print(f"unique values: {np.unique(clear_input)}")
+
             encrypted_input = self.fhe_client.quantize_encrypt_serialize(clear_input)
 
             # How many times the miner should run the model in chain
