@@ -194,27 +194,59 @@ class EpistulaClient:
         # Get client.zip using aiohttp with improved error handling
         bt.logging.info("Requesting client.zip...")
         try:
+            headers = self.epistula.generate_headers(b"", signed_for=self.hotkey)
+            bt.logging.debug(f"Request headers: {headers}")
+            bt.logging.debug(f"Request URL: {self.url}/get_client")
+
             async with self.session.get(
                 f"{self.url}/get_client",
-                headers=self.epistula.generate_headers(b"", signed_for=self.hotkey),
+                headers=headers,
                 ssl=False,
                 timeout=aiohttp.ClientTimeout(total=20)  # Increased timeout
             ) as response:
                 if response.status != 200:
-                    bt.logging.info(f"Get client request failed with status {response.status}")
-                    return None
+                    error_content = await response.text()
+                    bt.logging.error(f"Get client request failed with status {response.status}")
+                    bt.logging.error(f"Response headers: {response.headers}")
+                    bt.logging.error(f"Response content: {error_content}")
+                    return False
 
                 content = await response.read()
-                if not content:
-                    bt.logging.info("Received empty response")
-                    return None
+                content_length = len(content) if content else 0
+                bt.logging.debug(f"Received response with content length: {content_length} bytes")
 
-                with open(f"./{self.hotkey}/client.zip", "wb") as f:
+                if not content:
+                    bt.logging.error("Received empty response")
+                    return False
+
+                # Create directory if it doesn't exist
+                os.makedirs(f"./{self.hotkey}", exist_ok=True)
+                bt.logging.debug(f"Created/verified directory: ./{self.hotkey}")
+
+                filepath = f"./{self.hotkey}/client.zip"
+                with open(filepath, "wb") as f:
                     f.write(content)
 
+                # Verify the file exists and has content
+                file_size = os.path.getsize(filepath) if os.path.exists(filepath) else 0
+                bt.logging.debug(f"Wrote file {filepath} with size: {file_size} bytes")
+
+                if not os.path.exists(filepath) or file_size == 0:
+                    bt.logging.error(f"Failed to write client.zip or file is empty. Path: {filepath}, Size: {file_size}")
+                    return False
+
+                bt.logging.info(f"Successfully downloaded client.zip ({file_size} bytes)")
+                return True
+
         except aiohttp.ClientError as e:
-            bt.logging.info(f"Network error during get_client: {e}")
-            return None
+            bt.logging.error(f"Network error during get_client: {str(e)}")
+            bt.logging.error(f"Error type: {type(e).__name__}")
+            return False
+        except Exception as e:
+            bt.logging.error(f"Unexpected error during get_client: {str(e)}")
+            bt.logging.error(f"Error type: {type(e).__name__}")
+            bt.logging.error(f"Traceback: {traceback.format_exc()}")
+            return False
     
     async def upload_evaluation_keys(self):
         # Get and upload evaluation keys
@@ -318,6 +350,17 @@ class EpistulaClient:
 
             bt.logging.info(f"Connected to server at {self.url}")
 
+            # Get client.zip and check result
+            if not await self.get_client_zip():
+                bt.logging.error("Failed to get client.zip, aborting query")
+                return None
+
+            # Initialize FHE client
+            try:
+                self.fhe_client = FHEModelClient(path_dir=f"./{self.hotkey}", key_dir="./keys")
+            except Exception as e:
+                bt.logging.error(f"Failed to initialize FHE client: {e}")
+                return None
             self.get_client_zip()
 
             # Initialize FHE client
