@@ -404,15 +404,12 @@ async def process_submodel(model: FHEModelServer, input_data: bytes, key: bytes,
         )
         computation_time = timer.end("fhe_computation")
         logger.info(f"Computation time: {computation_time:.4f}s")
-        output_data = output.detach().numpy()
 
-        # Serialize the output (e.g., using struct or another method)
-        serialized_output = output_data.tobytes()
-        output_length = len(serialized_output)
+        output_length = len(output)
 
         # Yield the length of the chunk followed by the serialized output
         yield struct.pack("<I", output_length)  # Send the length of the data
-        yield serialized_output  # Send the actual data
+        yield output  # Send the actual data
 
         # The output of this execution becomes the input for the next execution
         current_input = output_data
