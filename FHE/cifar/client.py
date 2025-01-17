@@ -361,7 +361,6 @@ class EpistulaClient:
             except Exception as e:
                 bt.logging.error(f"Failed to initialize FHE client: {e}")
                 return None
-            self.get_client_zip()
 
             # Initialize FHE client
             self.fhe_client = FHEModelClient(path_dir=f"./{self.hotkey}", key_dir="./keys")
