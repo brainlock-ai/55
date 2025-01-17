@@ -321,7 +321,7 @@ class EpistulaClient:
             self.get_client_zip()
 
             # Initialize FHE client
-            self.fhe_client = FHEModelClient(path_dir="./", key_dir="./keys")
+            self.fhe_client = FHEModelClient(path_dir=f"./{self.hotkey}", key_dir="./keys")
 
             uid = self.upload_evaluation_keys()
 
@@ -329,7 +329,6 @@ class EpistulaClient:
             if image_index is None:
                 image_index = random.randint(0, len(self.test_sub_set) - 1)
             X = self.test_sub_set[image_index:image_index+1]
-            true_label = self.test_labels[image_index]
 
             # Generate random seed for this query
             augmentation_seed = random.randint(0, 2**32 - 1)
