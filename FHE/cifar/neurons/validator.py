@@ -602,7 +602,6 @@ class Validator:
                     # Get the batch of miners this validator should query
                     try:
                         batched_uids = self.deterministically_shuffle_and_batch_queryable_uids(filtered_uids)
-                        batched_uids = [7] # TODO remove
                     except Exception as e:
                         logger.error(f"Failed to batch UIDs: {str(e)}")
                         time.sleep(5)
