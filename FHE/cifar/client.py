@@ -428,6 +428,7 @@ class EpistulaClient:
             print(f"Final average cosine similarity: {average_cosine_similarity:.4f}")
             inference_speed_and_accuracy_score = average_inference_per_second * average_cosine_similarity
             print(f"Inference score: {inference_speed_and_accuracy_score:.4f}")
+            
             # Calculate final score using SimplifiedReward
             score, stats = self.reward_model.calculate_score(
                 inference_speed_and_accuracy_score=inference_speed_and_accuracy_score,

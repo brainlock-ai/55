@@ -30,8 +30,8 @@ def test_score_distribution():
             # Fill history with this time but varying accuracy
             hotkey = time_hotkeys[time]
             for _ in range(40):  # Fill the entire history
-                predictions_match = np.random.random() < accuracy
-                score = reward_model.calculate_score(time, predictions_match, hotkey)
+                average_cosine_similarity = np.random.random() < accuracy
+                score = reward_model.calculate_score(time, average_cosine_similarity, hotkey)
             # Record final score
             time_groups[time].append(score)
     
@@ -42,8 +42,8 @@ def test_score_distribution():
             # Fill history with this accuracy but varying time
             hotkey = accuracy_hotkeys[accuracy]
             for _ in range(40):  # Fill the entire history
-                predictions_match = np.random.random() < accuracy
-                score = reward_model.calculate_score(time, predictions_match, hotkey)
+                average_cosine_similarity = np.random.random() < accuracy
+                score = reward_model.calculate_score(time, average_cosine_similarity, hotkey)
             # Record final score
             accuracy_groups[accuracy].append(score)
     

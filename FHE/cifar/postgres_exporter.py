@@ -128,9 +128,9 @@ class PostgresExporter:
                             hotkey,
                             AVG(score) as avg_score,
                             COUNT(*) as total_requests,
-                            AVG((stats_json->>'response_time')::float) as avg_response_time,
-                            STDDEV((stats_json->>'response_time')::float) as std_response_time,
-                            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (stats_json->>'response_time')::float) as median_response_time
+                            AVG((stats_json->>'average_inference_per_second')::float) as avg_response_time,
+                            STDDEV((stats_json->>'average_inference_per_second')::float) as std_response_time,
+                            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (stats_json->>'average_inference_per_second')::float) as median_response_time
                         FROM recent_records
                         WHERE rn <= 40  -- Keep last 40 records
                         GROUP BY hotkey
@@ -138,9 +138,9 @@ class PostgresExporter:
                     latest_values AS (
                         SELECT 
                             hotkey,
-                            (stats_json->>'response_time')::float as latest_response_time,
+                            (stats_json->>'average_inference_per_second')::float as latest_response_time,
                             score as latest_score,
-                            (stats_json->>'predictions_match')::boolean as latest_predictions_match
+                            (stats_json->>'average_cosine_similarity')::boolean as latest_predictions_match
                         FROM recent_records
                         WHERE rn = 1
                     )

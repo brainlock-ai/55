@@ -16,7 +16,7 @@ class MinerHistory(Base):
     __tablename__ = 'miner_history'
     id = Column(Integer, primary_key=True, autoincrement=True)
     hotkey = Column(String, index=True, nullable=False)
-    response_time = Column(Float, nullable=False)
+    average_inference_per_second = Column(Float, nullable=False)
     prediction_match = Column(Float, nullable=False)
     score = Column(Float, nullable=True)
     stats = Column(String, nullable=True)  # JSON string containing response time, prediction match, etc.
@@ -100,14 +100,14 @@ class SimplifiedReward:
             # Create stats dictionary for current response
             current_stats = {
                 "current_score": float(current_score),
-                "response_time": float(average_inference_per_second),
-                "predictions_match": float(average_cosine_similarity)
+                "average_inference_per_second": float(average_inference_per_second),
+                "average_cosine_similarity": float(average_cosine_similarity)
             }
 
             # Add current response and its score to the database
             new_entry = MinerHistory(
-                hotkey=hotkey, 
-                response_time=average_inference_per_second,
+                hotkey=hotkey,
+                average_inference_per_second=average_inference_per_second,
                 prediction_match=average_cosine_similarity,
                 score=float(inference_speed_and_accuracy_score),
                 stats=json.dumps(current_stats)
@@ -134,15 +134,15 @@ class SimplifiedReward:
                 ),
                 response_times AS (
                     SELECT 
-                        (stats_json->>'response_time')::float as response_time,
+                        (stats_json->>'average_inference_per_second')::float as average_inference_per_second,
                         score,
-                        (stats_json->>'predictions_match')::boolean as predictions_match
+                        (stats_json->>'average_cosine_similarity')::boolean as average_cosine_similarity
                     FROM last_40_entries
                 )
                 SELECT 
-                    AVG(response_time) as rt_mean,
-                    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY response_time) as rt_median,
-                    STDDEV(response_time) as rt_std,
+                    AVG(average_inference_per_second) as rt_mean,
+                    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY average_inference_per_second) as rt_median,
+                    STDDEV(average_inference_per_second) as rt_std,
                     AVG(score) as score_mean,
                     PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY score) as score_median,
                     STDDEV(score) as score_std,
@@ -155,11 +155,11 @@ class SimplifiedReward:
             # Prepare aggregated stats
             stats = {
                 "current_score": float(current_score),
-                "response_time": float(response_time),
-                "predictions_match": bool(predictions_match),
+                "average_inference_per_second": float(average_inference_per_second),
+                "average_cosine_similarity": bool(average_cosine_similarity),
                 "response_time_stats": (
-                    float(result.rt_mean if result.rt_mean is not None else response_time),
-                    float(result.rt_median if result.rt_median is not None else response_time),
+                    float(result.rt_mean if result.rt_mean is not None else average_inference_per_second),
+                    float(result.rt_median if result.rt_median is not None else average_inference_per_second),
                     float(result.rt_std if result.rt_std is not None else 0.0)
                 ),
                 "score_stats": (
