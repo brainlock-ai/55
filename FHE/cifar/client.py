@@ -427,7 +427,7 @@ class EpistulaClient:
                     if i == 0:
                         chunk_simulated_output = self.model(original_input)
                     else:
-                        previous_chunk_result = chunk_stats[i - 1]["result"]
+                        previous_chunk_result = torch.from_numpy(chunk_stats[i - 1]["result"]).float().to(self.device)
                         chunk_simulated_output = self.model(previous_chunk_result)
 
                 chunk_cosine_similarity_score = self.compare_outputs_with_cosine_sim(chunk_simulated_output, chunk_stat["result"])
