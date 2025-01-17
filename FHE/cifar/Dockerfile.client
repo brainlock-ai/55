@@ -38,10 +38,10 @@ RUN pip config set global.timeout 1000 && \
 ENV PYTHONPATH=/project
 
 # Create experiments directory structure
-RUN mkdir -p /project/experiments/CNV_2W2A_2W2A_20221114_131345/checkpoints
+RUN mkdir -p /project/experiments/
 
 # Copy checkpoint file if it exists
-COPY experiments/CNV_2W2A_2W2A_20221114_131345/checkpoints/best.tar /project/experiments/CNV_2W2A_2W2A_20221114_131345/checkpoints/best.tar
+COPY experiments/synthetic_model_checkpoint.pth /project/experiments/synthetic_model_checkpoint.pth
 
 # Install CPU-only versions of PyTorch and torchvision
 RUN pip install torch==1.13.1+cpu torchvision==0.14.1+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html

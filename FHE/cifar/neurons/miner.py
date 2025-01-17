@@ -36,11 +36,13 @@ class FHEHybridMiner(BaseNeuron):
         self.keys_dir = self.base_dir / "FHE" / "cifar" / "neurons" / "user_keys"
         self.server_dir = self.base_dir / "FHE" / "server"
         
-        self.model_name = "dev"
+        # Directory containing the specific model we want to use
+        self.model_dir = self.models_dir / "dev"  # Using dev directory where models are compiled
         self.fhe_server_port = self.config.fhe_server_port
 
         # Ensure directories exist
         self.keys_dir.mkdir(parents=True, exist_ok=True)
+        self.models_dir.mkdir(parents=True, exist_ok=True)
 
         # Start FHE server
         self.start_fhe_server()
@@ -80,10 +82,10 @@ class FHEHybridMiner(BaseNeuron):
             bt.logging.error(f"Deploy script not found at: {deploy_script_path}")
             sys.exit(1)
         
-        # Get absolute path to the model directory
-        model_path = (self.models_dir / self.model_name).absolute()
+        # Get absolute path to the model directory (not a specific file)
+        model_path = self.model_dir.absolute()
         
-        bt.logging.info(f"Using model path: {model_path}")
+        bt.logging.info(f"Using model directory path: {model_path}")
         bt.logging.info(f"Using deploy script path: {deploy_script_path}")
         
         cmd = [

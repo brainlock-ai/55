@@ -412,39 +412,40 @@ class Validator:
                             # Process valid responses that have required fields
                             score = result.get('score')
                             stats = result.get('stats')
-                            predictions_match = result.get('predictions_match')
+                            average_cosine_similarity = result.get('average_cosine_similarity')
                             
                             is_valid = (
                                 isinstance(score, (int, float)) and  # Must have a numeric score
                                 isinstance(stats, dict) and  # Must have stats dictionary
-                                isinstance(predictions_match, bool) and  # Must have boolean predictions_match
+                                isinstance(average_cosine_similarity, float) and  # Must have float average_cosine_similarity
                                 duration > 0  # Must have non-zero duration
                             )
                             
-                            if is_valid:
-                                try:
-                                    # Calculate score using SimplifiedReward model
-                                    current_score, stats = self.reward_model.calculate_score(
-                                        response_time=duration,
-                                        predictions_match=predictions_match,
-                                        hotkey=hotkey
-                                    )
-                                    
-                                    logger.info(f"Recorded validation for miner {uid} with duration {duration:.2f}s, score: {current_score:.6f}")
-                                    
-                                    # Log score stats if available
-                                    if 'score_stats' in stats:
-                                        score_stats = stats.get('score_stats')
-                                        if isinstance(score_stats, (tuple, list)) and len(score_stats) == 3:
-                                            mean, median, std = score_stats
-                                            logger.info(f"Score stats for miner {uid} - Mean: {mean:.6f}, Median: {median:.6f}, Std: {std:.6f}")
-                                except Exception as scoring_error:
-                                    logger.error(f"Error calculating score: {str(scoring_error)}")
-                            else:
-                                if duration <= 0:
-                                    logger.warning(f"Skipping record for miner {uid} due to zero/negative duration: {duration}")
-                                else:
-                                    logger.warning(f"Invalid response format from miner {uid}. Missing or invalid fields. Required: score (number), stats (dict), predictions_match (bool). Got: score={type(score)}, stats={type(stats)}, predictions_match={type(predictions_match)}")
+                            #if is_valid:
+                            #    try:
+                            #        # Calculate score using SimplifiedReward model
+                            #        current_score, stats = self.reward_model.calculate_score(
+                            #            average_inference_per_second=duration,
+                            #            average_cosine_similarity=average_cosine_similarity,
+                            #            hotkey=hotkey
+                            #        )
+                            #        
+                            #        logger.info(f"Recorded validation for miner {uid} with duration {duration:.2f}s, score: {current_score:.6f}")
+                            #        
+                            #        # Log score stats if available
+                            #        if 'score_stats' in stats:
+                            #            score_stats = stats.get('score_stats')
+                            #            if isinstance(score_stats, (tuple, list)) and len(score_stats) == 3:
+                            #                mean, median, std = score_stats
+                            #                logger.info(f"Score stats for miner {uid} - Mean: {mean:.6f}, Median: {median:.6f}, Std: {std:.6f}")
+                            #    except Exception as scoring_error:
+                            #        logger.error(f"Error calculating score: {str(scoring_error)}")
+
+                            #else:
+                            #    if duration <= 0:
+                            #        logger.warning(f"Skipping record for miner {uid} due to zero/negative duration: {duration}")
+                            #    else:
+                            #        logger.warning(f"Invalid response format from miner {uid}. Missing or invalid fields. Required: score (number), stats (dict), average_cosine_similarity (float). Got: score={type(score)}, stats={type(stats)}, average_cosine_similarity={type(average_cosine_similarity)}")
                             
                         except Exception as db_error:
                             logger.error(f"Error recording validation in database for miner {uid}: {str(db_error)}")

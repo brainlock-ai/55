@@ -105,30 +105,10 @@ sg docker -c '
 echo "Starting miner..."
 # Port 5000 is specified as external_port to broadcast the location of the FHE inference server
 # This is not a traditional axon port, but rather tells the network where to find your inference container
-pm2 start neurons/miner.py --name miner -- \
+python3 neurons/miner.py \
   --wallet.name ${WALLET_NAME} \
   --wallet.hotkey ${HOTKEY_NAME} \
   --subtensor.network ${NETWORK} \
   --netuid ${NETUID} \
   --no_force_validator_permit \
-  --axon.external_port ${EXTERNAL_PORT} \
-  --max-memory-restart 4G \
-  --restart-delay 10000 \
-  --max-restarts 10 \
-  --min-uptime 1000
-
-# Add PM2 to startup with correct path detection
-PM2_PATH=$(which pm2)
-if [ -n "$PM2_PATH" ]; then
-    echo "Setting up PM2 startup with path: $PM2_PATH"
-    sudo env PATH=$PATH:$(dirname $PM2_PATH) $PM2_PATH startup systemd -u $USER --hp $HOME
-    pm2 save
-else
-    echo "Error: Could not find pm2 executable"
-    exit 1
-fi
-
-echo ""
-echo "Miner has been started with pm2"
-echo "To check miner status, run: pm2 status"
-echo "To view logs, run: pm2 logs" 
+  --axon.external_port ${EXTERNAL_PORT} 

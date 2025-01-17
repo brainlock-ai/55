@@ -8,22 +8,21 @@ Routes:
 All routes are protected with Epistula authentication.
 """
 
-import asyncio
-import io
-import json
 import os
+import json
+import struct
 import uuid
 import time
 import base58
 import uvicorn
 import websockets
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import AsyncGenerator, Dict, List, Optional, Tuple
 from hashlib import blake2b, sha256
 from time import perf_counter
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile, Request, Response, Depends, File
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from loguru import logger
 from substrateinterface import Keypair
@@ -168,14 +167,13 @@ class EpistulaVerifier:
         # If not in cache or cache expired, verify with endpoint
         try:
             stake = await self.get_stake_from_hotkey(hotkey)
-            
+           
             # Update cache
             self.stake_cache[hotkey] = (current_time, stake, True)
-            
-            if stake < 10000:  # 10k Tao minimum
-                return False, stake, f"Insufficient stake: {stake} < 10000"
-                
+          
+            # Accept any stake amount
             return True, stake, ""
+            
         except Exception as e:
             logger.error(f"Stake verification error: {str(e)}")
             return False, 0, str(e)
@@ -191,11 +189,11 @@ class EpistulaVerifier:
         now: int,
         path: str = ""
     ) -> Optional[str]:
-        # Verify stake first
-        is_valid, stake, error = await self.verify_stake(signed_by)
-        if not is_valid:
-            logger.error(f"Stake verification failed for {signed_by}: {error}")
-            return f"Stake verification failed: {error}"
+        # # Verify stake first
+        # is_valid, stake, error = await self.verify_stake(signed_by)
+        # if not is_valid:
+        #     logger.error(f"Stake verification failed for {signed_by}: {error}")
+        #     return f"Stake verification failed: {error}"
 
         # Add miner hotkey verification
         if signed_for and signed_for != self.MINER_HOTKEY:
@@ -302,7 +300,7 @@ verifier = EpistulaVerifier()
 FILE_FOLDER = Path(__file__).parent
 
 KEY_PATH = Path(os.environ.get("KEY_PATH", FILE_FOLDER / Path("server_keys")))
-CLIENT_SERVER_PATH = Path(os.environ.get("PATH_TO_MODEL", FILE_FOLDER / Path("dev")))
+CLIENT_SERVER_PATH = Path(os.environ.get("PATH_TO_MODEL", FILE_FOLDER / "dev"))
 PORT = os.environ.get("PORT", "5000")
 
 fhe = FHEModelServer(str(CLIENT_SERVER_PATH.resolve()))
@@ -386,11 +384,44 @@ async def add_key(
     KEYS[uid] = await key.read()
     return {"uid": uid}
 
+async def process_submodel(model: FHEModelServer, input_data: bytes, key: bytes, iterations: int, timer: TimingStats) -> AsyncGenerator[bytes, None]:
+    """
+    Async generator to process input through the submodel and stream outputs.
+    Each output becomes the next input.
+    """
+    current_input = input_data
+    for i in range(iterations):
+        # Run the submodel
+        
+        # Time FHE computation
+        timer.start("fhe_computation")
+        output = model.run(
+            serialized_encrypted_quantized_data=current_input,
+            serialized_evaluation_keys=key,
+        )
+        computation_time = timer.end("fhe_computation")
+        logger.info(f"Computation time: {computation_time:.4f}s")
+
+        output_length = len(output)
+
+        # Yield the length of the chunk followed by the serialized output
+        yield struct.pack("<I", output_length)  # Send the length of the data
+        yield output  # Send the actual data
+
+        # The output of this execution becomes the input for the next execution
+        current_input = output
+    
+    # Log total time
+    total_time = timer.end("total")
+    logger.info(f"Total request time: {total_time:.4f}s")
+    logger.info("-" * 40)  # Separator for readability
+
 @app.post("/compute")
 async def compute(
     request: Request,
     model_input: UploadFile = File(...),
     uid: str = Form(...),
+    iterations: int = Form(...),
     _: None = Depends(verify_epistula_request)
 ):
     """Compute the circuit over encrypted input with Epistula authentication."""
@@ -411,28 +442,11 @@ async def compute(
         input_data = await model_input.read()
         timer.end("input_read")
         
-        # Time FHE computation
-        timer.start("fhe_computation")
-        encrypted_results = fhe.run(
-            serialized_encrypted_quantized_data=input_data,
-            serialized_evaluation_keys=key,
-        )
-        timer.end("fhe_computation")
-
-        # Time response creation
-        timer.start("response_creation")
-        response = Response(
-            content=encrypted_results,
+        # Stream the submodel outputs
+        return StreamingResponse(
+            process_submodel(fhe, input_data, key, iterations, timer),
             media_type="application/octet-stream"
         )
-        timer.end("response_creation")
-
-        # Log total time
-        total_time = timer.end("total")
-        logger.info(f"Total request time: {total_time:.4f}s")
-        logger.info("-" * 40)  # Separator for readability
-        
-        return response
 
     except Exception as e:
         logger.error(f"Error in compute endpoint: {str(e)}")

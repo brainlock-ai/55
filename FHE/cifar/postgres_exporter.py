@@ -73,11 +73,11 @@ class PostgresExporter:
             'Number of active miners in the network'
         )
 
-        self.failure_rate = Gauge(
-            'validator_miner_failure_rate',
-            'Failure rate of miner predictions',
-            ['hotkey']
-        )
+        #self.failure_rate = Gauge(
+        #    'validator_miner_failure_rate',
+        #    'Failure rate of miner predictions',
+        #    ['hotkey']
+        #)
 
         # Initialize database connection
         self.engine = create_engine(
@@ -128,10 +128,9 @@ class PostgresExporter:
                             hotkey,
                             AVG(score) as avg_score,
                             COUNT(*) as total_requests,
-                            1.0 - (SUM(CASE WHEN (stats_json->>'predictions_match')::boolean THEN 1 ELSE 0 END)::float / COUNT(*)) as failure_rate,
-                            AVG((stats_json->>'response_time')::float) as avg_response_time,
-                            STDDEV((stats_json->>'response_time')::float) as std_response_time,
-                            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (stats_json->>'response_time')::float) as median_response_time
+                            AVG((stats_json->>'average_inference_per_second')::float) as avg_response_time,
+                            STDDEV((stats_json->>'average_inference_per_second')::float) as std_response_time,
+                            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (stats_json->>'average_inference_per_second')::float) as median_response_time
                         FROM recent_records
                         WHERE rn <= 40  -- Keep last 40 records
                         GROUP BY hotkey
@@ -139,9 +138,9 @@ class PostgresExporter:
                     latest_values AS (
                         SELECT 
                             hotkey,
-                            (stats_json->>'response_time')::float as latest_response_time,
+                            (stats_json->>'average_inference_per_second')::float as latest_response_time,
                             score as latest_score,
-                            (stats_json->>'predictions_match')::boolean as latest_predictions_match
+                            (stats_json->>'average_cosine_similarity')::float as latest_predictions_match
                         FROM recent_records
                         WHERE rn = 1
                     )
@@ -162,9 +161,9 @@ class PostgresExporter:
                     # Update all metrics for this miner with NULL checks
                     if row.latest_score is not None:
                         self.miner_scores.labels(hotkey=hotkey).set(row.latest_score)
-                    if row.failure_rate is not None:
-                        prediction_accuracy = 1.0 - row.failure_rate
-                        self.prediction_accuracy.labels(hotkey=hotkey).set(prediction_accuracy)
+                    #if row.failure_rate is not None:
+                    #    prediction_accuracy = 1.0 - row.failure_rate
+                    #    self.prediction_accuracy.labels(hotkey=hotkey).set(prediction_accuracy)
                     if row.latest_response_time is not None:
                         self.miner_response_time.labels(hotkey=hotkey).set(row.latest_response_time)
                     if row.avg_score is not None:
@@ -175,17 +174,17 @@ class PostgresExporter:
                         self.response_time_std.labels(hotkey=hotkey).set(row.std_response_time)
                     if row.median_response_time is not None:
                         self.response_time_median.labels(hotkey=hotkey).set(row.median_response_time)
-                    if row.failure_rate is not None:
-                        self.failure_rate.labels(hotkey=hotkey).set(row.failure_rate)
+                    #if row.failure_rate is not None:
+                    #    self.failure_rate.labels(hotkey=hotkey).set(row.failure_rate)
                     
                     # Update request counters only if we have valid counts
-                    if row.total_requests is not None:
-                        success_count = int(row.total_requests * (1.0 - row.failure_rate))
-                        failure_count = row.total_requests - success_count
+                    #if row.total_requests is not None:
+                    #    success_count = int(row.total_requests * (1.0 - row.failure_rate))
+                    #    failure_count = row.total_requests - success_count
                         
                         # Set the counter values directly
-                        self.validation_requests.labels(status='success', hotkey=hotkey)._value.set(success_count)
-                        self.validation_requests.labels(status='failure', hotkey=hotkey)._value.set(failure_count)
+                    #    self.validation_requests.labels(status='success', hotkey=hotkey)._value.set(success_count)
+                    #    self.validation_requests.labels(status='failure', hotkey=hotkey)._value.set(failure_count)
 
         except Exception as e:
             logger.error(f"Error collecting metrics: {str(e)}")
