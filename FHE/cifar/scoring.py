@@ -51,12 +51,13 @@ class SimplifiedReward:
     def pareto_score(self, inference_speed_and_accuracy_score):
         """
         Calculate Pareto-based score for response time.
-        Score = (scale/x)^α where α is shape parameter and x being better as it decreases	
-        This creates a heavy-tailed distribution favoring faster times.	
-        Scores can exceed 1.0 for times below the scale factor.
+        Score = (scale*x)^α where α is shape parameter and x is the inference speed and accuracy score.
+        This creates a heavy-tailed distribution favoring higher scores.
         """
-        # A higher speed and accuracy score is better, so x = 1/y here
-        return pow(self.SCALE*inference_speed_and_accuracy_score, self.ALPHA)
+        if inference_speed_and_accuracy_score <= 0:
+            return 0.0
+            
+        return pow(self.SCALE * inference_speed_and_accuracy_score, self.ALPHA)
 
     def _calculate_stats(self, values):
         """Calculate mean, median, and standard deviation of a sequence"""
@@ -119,12 +120,10 @@ class SimplifiedReward:
             stats_query = text("""
                 WITH recent_history AS (
                     SELECT 
-                        score,
                         stats::json as stats_json,
                         ROW_NUMBER() OVER (PARTITION BY hotkey ORDER BY timestamp DESC) as rn
                     FROM miner_history
                     WHERE hotkey = :hotkey
-                    AND timestamp >= NOW() - INTERVAL '6 hours'
                     AND stats IS NOT NULL
                 ),
                 last_40_entries AS (
@@ -135,7 +134,7 @@ class SimplifiedReward:
                 response_times AS (
                     SELECT 
                         (stats_json->>'average_inference_per_second')::float as average_inference_per_second,
-                        score,
+                        (stats_json->>'current_score')::float as current_score,
                         (stats_json->>'average_cosine_similarity')::float as average_cosine_similarity
                     FROM last_40_entries
                 )
@@ -143,9 +142,9 @@ class SimplifiedReward:
                     AVG(average_inference_per_second) as rt_mean,
                     PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY average_inference_per_second) as rt_median,
                     STDDEV(average_inference_per_second) as rt_std,
-                    AVG(score) as score_mean,
-                    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY score) as score_median,
-                    STDDEV(score) as score_std,
+                    AVG(current_score) as score_mean,
+                    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY current_score) as score_median,
+                    STDDEV(current_score) as score_std,
                     COUNT(*) as entry_count
                 FROM response_times;
             """)

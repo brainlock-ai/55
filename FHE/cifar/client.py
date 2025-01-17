@@ -435,15 +435,14 @@ class EpistulaClient:
 
             average_cosine_similarity = total_score / len(chunk_stats)
             
-            # Calculate total time from first to last inference
-            total_time = chunk_stats[-1]["timestamp"] - start_send_message_time
+            # Calculate total time from request start to last inference
+            total_time = time.time() - start_send_message_time
             
             # Calculate average inference time
             num_inferences = len(chunk_stats)  # If each chunk is a single inference
             average_inference_per_second = num_inferences / total_time if total_time > 0 else 0.0
 
             # Check if the server might have buffered results
-            # e.g. by looking at the time to the 20th percentile inference
             if num_inferences >= 5:
                 twenty_percent_index = math.ceil(num_inferences * 0.20)
                 time_to_twentieth_percent = (
@@ -474,13 +473,10 @@ class EpistulaClient:
             # Print results with predictions
             print("\nScoring Results:")
             print(f"Time taken: {total_time:.2f}s")
-            print(f"Final score: {score:.2%}")
             
             # Print detailed stats
-            rt_mean, rt_median, rt_std = stats["response_time_stats"]
-            print(f"Response time stats - Mean: {rt_mean:.2f}s, Median: {rt_median:.2f}s, Std: {rt_std:.2f}s")
             score_mean, score_median, score_std = stats["score_stats"]
-            print(f"Score stats - Mean: {score_mean:.2%}, Median: {score_median:.2%}, Std: {score_std:.2%}")
+            print(f"Score stats - Mean: {score_mean:.2f}, Median: {score_median:.2f}, Std: {score_std:.2f}")
             
             return {
                 'score': score,
