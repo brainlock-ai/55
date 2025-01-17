@@ -404,7 +404,7 @@ class EpistulaClient:
 
             qa = QuantizedArray(
                 n_bits=8,              # 8-bit quantization
-                values=scaled_input,   # Input data
+                values=clear_input,    # Input data
                 is_signed=True         # Ensure signed integers
             )
 
