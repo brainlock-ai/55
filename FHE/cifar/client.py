@@ -385,30 +385,7 @@ class EpistulaClient:
             # Use same augmented input for FHE inference
             clear_input = augmented_X.numpy()
 
-            print(f"clear_input dtype: {clear_input.dtype}")
-            print(f"clear_input min/max: {clear_input.min()}/{clear_input.max()}")
-            print(f"unique values: {np.unique(clear_input)}")
-
-            # 1. Multiply data by 127 to spread [0,1] float to [0,127] integer range.
-            scaled_input = (clear_input * 127.0).round()  # or use .astype(np.int8) after
-
-            # 2. Clip values just in case of small floating rounding above 127
-            scaled_input = np.clip(scaled_input, 0, 127)
-
-            # 3. Convert to uint8
-            scaled_input = scaled_input.astype(np.int8)
-
-            print(f"scaled_input dtype: {scaled_input.dtype}")
-            print(f"scaled_input min/max: {scaled_input.min()}/{scaled_input.max()}")
-            print(f"unique values: {np.unique(scaled_input)}")
-
-            qa = QuantizedArray(
-                n_bits=8,              # 8-bit quantization
-                values=clear_input,    # Input data
-                is_signed=True         # Ensure signed integers
-            )
-
-            encrypted_input = self.fhe_client.quantize_encrypt_serialize(qa.qvalues)
+            encrypted_input = self.fhe_client.quantize_encrypt_serialize(clear_input)
             print(f"Encrypted input type: {type(encrypted_input)}")
             # How many times the miner should run the model in chain
             iterations = random.randint(5, 10)

@@ -76,7 +76,7 @@ class SyntheticCNV(Module):
         self.features.append(
             QuantIdentity(
                 act_quant=CommonActQuant,
-                bit_width=act_bit_width
+                bit_width=weight_bit_width
             )
         )
 

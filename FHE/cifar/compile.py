@@ -31,18 +31,20 @@ def main():
     # Set the model to eval mode
     model.eval()
 
-    #torch.manual_seed(42)  # For reproducibility
-    #for layer in model.features:
-    #    if isinstance(layer, QuantConv2d):
-    #        torch.nn.init.xavier_uniform_(layer.weight)
-    #    elif isinstance(layer, BatchNorm2d):
-    #        torch.nn.init.constant_(layer.weight, 1.0)
-    #        torch.nn.init.constant_(layer.bias, 0.0)
-
-    # Save the model state to a checkpoint
     checkpoint_path = Path(__file__).parent / "experiments/synthetic_model_checkpoint.pth"
-    #torch.save({"state_dict": model.state_dict()}, checkpoint_path)
-    #return
+
+    if not checkpoint_path.exists():
+        torch.manual_seed(42)  # For reproducibility
+        for layer in model.features:
+            if isinstance(layer, QuantConv2d):
+                torch.nn.init.xavier_uniform_(layer.weight)
+            elif isinstance(layer, BatchNorm2d):
+                torch.nn.init.constant_(layer.weight, 1.0)
+                torch.nn.init.constant_(layer.bias, 0.0)
+
+        # Save the model state to a checkpoint
+        torch.save({"state_dict": model.state_dict()}, checkpoint_path)
+        return
 
     # Load the saved parameters using the available checkpoint
     checkpoint = torch.load(
