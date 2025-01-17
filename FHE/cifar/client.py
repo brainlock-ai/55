@@ -437,6 +437,7 @@ class EpistulaClient:
             
             # Times for inferences (one chunk == one inference, if that's your assumption)
             inference_times = [cs["inference_time"] for cs in chunk_stats]
+            inference_timestamps = [cs["timestamp"] for cs in chunk_stats]
 
             end_inference_time = inference_times[-1]
 
@@ -452,7 +453,7 @@ class EpistulaClient:
             if num_inferences >= 5:
                 twenty_percent_index = math.ceil(num_inferences * 0.20)
                 time_to_twentieth_percent = (
-                    inference_times[twenty_percent_index] - start_send_message_time
+                    inference_timestamps[twenty_percent_index] - start_send_message_time
                 )
 
                 # If the first 20% of the inferences arrived after 70% of total time,
