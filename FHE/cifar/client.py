@@ -397,11 +397,11 @@ class EpistulaClient:
             # 3. Convert to uint8
             scaled_input = scaled_input.astype(np.uint8)
 
-            print(f"clear_input dtype: {clear_input.dtype}")
-            print(f"clear_input min/max: {clear_input.min()}/{clear_input.max()}")
-            print(f"unique values: {np.unique(clear_input)}")
+            print(f"clear_input dtype: {scaled_input.dtype}")
+            print(f"clear_input min/max: {scaled_input.min()}/{scaled_input.max()}")
+            print(f"unique values: {np.unique(scaled_input)}")
 
-            encrypted_input = self.fhe_client.quantize_encrypt_serialize(clear_input)
+            encrypted_input = self.fhe_client.quantize_encrypt_serialize(scaled_input)
 
             # How many times the miner should run the model in chain
             iterations = random.randint(5, 10)
