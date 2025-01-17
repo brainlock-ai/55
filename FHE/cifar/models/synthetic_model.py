@@ -73,15 +73,16 @@ class SyntheticCNV(Module):
         self.features.append(BatchNorm2d(in_ch, eps=1e-4))
 
         # Quantized Activation
-        self.features.append(
-            QuantIdentity(
-                act_quant=CommonActQuant,
-                bit_width=weight_bit_width,
-                min_val=-1.0,
-                max_val=1.0 - 2.0 ** (-7),
-                restrict_scaling_type=RestrictValueType.POWER_OF_TWO
-            )
-        )
+        #self.features.append(
+        #    QuantIdentity(
+        #        act_quant=CommonActQuant,
+        #        return_quant_tensor=True,
+        #        bit_width=weight_bit_width,
+        #        min_val=-1.0,
+        #        max_val=1.0 - 2.0 ** (-7),
+        #        restrict_scaling_type=RestrictValueType.POWER_OF_TWO
+        #    )
+        #)
 
     def clip_weights(self, min_val, max_val):
         for mod in self.features:
