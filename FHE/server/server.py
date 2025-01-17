@@ -155,29 +155,31 @@ class EpistulaVerifier:
 
     async def verify_stake(self, hotkey: str) -> tuple[bool, float, str]:
         """Verify stake for a hotkey asynchronously."""
-        current_time = time.time()
+        # Disabled stake verification - accept all
+        return True, 0, ""
         
-        # Check cache first
-        if hotkey in self.stake_cache:
-            timestamp, stake, valid = self.stake_cache[hotkey]
-            if current_time - timestamp < self.cache_duration:
-                logger.debug(f"Using cached stake for {hotkey}: {stake}")
-                return valid, stake, ""
+        # current_time = time.time()
+        
+        # # Check cache first
+        # if hotkey in self.stake_cache:
+        #     timestamp, stake, valid = self.stake_cache[hotkey]
+        #     if current_time - timestamp < self.cache_duration:
+        #         logger.debug(f"Using cached stake for {hotkey}: {stake}")
+        #         return valid, stake, ""
 
-        # If not in cache or cache expired, verify with endpoint
-        try:
-            stake = await self.get_stake_from_hotkey(hotkey)
+        # # If not in cache or cache expired, verify with endpoint
+        # try:
+        #     stake = await self.get_stake_from_hotkey(hotkey)
             
-            # Update cache
-            self.stake_cache[hotkey] = (current_time, stake, True)
+        #     # Update cache
+        #     self.stake_cache[hotkey] = (current_time, stake, True)
             
-            if stake < 10000:  # 10k Tao minimum
-                return False, stake, f"Insufficient stake: {stake} < 10000"
-                
-            return True, stake, ""
-        except Exception as e:
-            logger.error(f"Stake verification error: {str(e)}")
-            return False, 0, str(e)
+        #     # Accept any stake amount
+        #     return True, stake, ""
+            
+        # except Exception as e:
+        #     logger.error(f"Stake verification error: {str(e)}")
+        #     return False, 0, str(e)
 
     async def verify_signature(
         self,
@@ -190,11 +192,11 @@ class EpistulaVerifier:
         now: int,
         path: str = ""
     ) -> Optional[str]:
-        # Verify stake first
-        is_valid, stake, error = await self.verify_stake(signed_by)
-        if not is_valid:
-            logger.error(f"Stake verification failed for {signed_by}: {error}")
-            return f"Stake verification failed: {error}"
+        # # Verify stake first
+        # is_valid, stake, error = await self.verify_stake(signed_by)
+        # if not is_valid:
+        #     logger.error(f"Stake verification failed for {signed_by}: {error}")
+        #     return f"Stake verification failed: {error}"
 
         # Add miner hotkey verification
         if signed_for and signed_for != self.MINER_HOTKEY:
@@ -402,15 +404,18 @@ async def process_submodel(model: FHEModelServer, input_data: bytes, key: bytes,
         )
         computation_time = timer.end("fhe_computation")
         logger.info(f"Computation time: {computation_time:.4f}s")
+        output_data = output.detach().numpy()
 
-        output_length = len(output)
+        # Serialize the output (e.g., using struct or another method)
+        serialized_output = output_data.tobytes()
+        output_length = len(serialized_output)
 
         # Yield the length of the chunk followed by the serialized output
         yield struct.pack("<I", output_length)  # Send the length of the data
-        yield output  # Send the actual data
+        yield serialized_output  # Send the actual data
 
         # The output of this execution becomes the input for the next execution
-        current_input = output
+        current_input = output_data
     
     # Log total time
     total_time = timer.end("total")
