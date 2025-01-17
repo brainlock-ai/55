@@ -377,7 +377,7 @@ class EpistulaClient:
             # Apply augmentation once
             torch.manual_seed(augmentation_seed)
             augmented_X = self.augmentation(X)
-            # original_input = augmented_X.to(self.device)
+            original_input = augmented_X.to(self.device)
 
             # Use same augmented input for FHE inference
             clear_input = augmented_X.numpy()
@@ -425,7 +425,7 @@ class EpistulaClient:
             for i, chunk_stat in enumerate(chunk_stats):
                 with torch.no_grad():
                     if i == 0:
-                        chunk_simulated_output = self.model(clear_input)
+                        chunk_simulated_output = self.model(original_input)
                     else:
                         previous_chunk_result = chunk_stats[i - 1]["result"]
                         chunk_simulated_output = self.model(previous_chunk_result)
