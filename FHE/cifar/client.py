@@ -113,7 +113,7 @@ class EpistulaClient:
             
             # Find relative path to checkpoints
             dir_path = Path(__file__).parent.absolute()
-            checkpoint_path = dir_path / "experiments/CNV_2W2A_2W2A_20221114_131345/checkpoints/best.tar"
+            checkpoint_path = dir_path / "experiments/synthetic_model_checkpoint.pth"
             
             # Load checkpoint
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
