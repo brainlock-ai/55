@@ -38,12 +38,12 @@ def main():
         torch.manual_seed(42)  # For reproducibility
         for layer in model.features:
             if isinstance(layer, QuantConv2d):
-                print("allo??")
-                #torch.nn.init.xavier_uniform_(layer.weight)
                 torch.nn.init.kaiming_uniform_(layer.weight, a=math.sqrt(5))
+                print(f"QuantConv2d weights initialized: {layer.weight}")
             elif isinstance(layer, BatchNorm2d):
                 torch.nn.init.constant_(layer.weight, 1.0)
                 torch.nn.init.constant_(layer.bias, 0.0)
+                print(f"BatchNorm2d weights initialized: {layer.weight}")
 
         # Save the model state to a checkpoint
         torch.save({"state_dict": model.state_dict()}, checkpoint_path)
