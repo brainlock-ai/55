@@ -363,9 +363,6 @@ class EpistulaClient:
                 bt.logging.error(f"Failed to initialize FHE client: {e}")
                 return None
 
-            # Initialize FHE client
-            self.fhe_client = FHEModelClient(path_dir=f"./{self.hotkey}", key_dir="./keys")
-
             uid = await self.upload_evaluation_keys()
 
             # Select image (random if not specified)
@@ -380,7 +377,7 @@ class EpistulaClient:
             # Apply augmentation once
             torch.manual_seed(augmentation_seed)
             augmented_X = self.augmentation(X)
-            original_input = augmented_X.to(self.device)
+            # original_input = augmented_X.to(self.device)
 
             # Use same augmented input for FHE inference
             clear_input = augmented_X.numpy()
@@ -428,10 +425,10 @@ class EpistulaClient:
             for i, chunk_stat in enumerate(chunk_stats):
                 with torch.no_grad():
                     if i == 0:
-                        chunk_simulated_output = self.fhe_client.run(scaled_input)
+                        chunk_simulated_output = self.model(clear_input)
                     else:
                         previous_chunk_result = chunk_stats[i - 1]["result"]
-                        chunk_simulated_output = self.fhe_client.run(previous_chunk_result)
+                        chunk_simulated_output = self.model(previous_chunk_result)
 
                 chunk_cosine_similarity_score = self.compare_outputs_with_cosine_sim(chunk_simulated_output, chunk_stat["result"])
                 total_score += chunk_cosine_similarity_score
