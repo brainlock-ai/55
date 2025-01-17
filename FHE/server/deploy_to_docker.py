@@ -18,6 +18,7 @@ import subprocess
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import time
 
 DATE_FORMAT: str = "%Y_%m_%d_%H_%M_%S"
 
@@ -84,6 +85,19 @@ def build_docker_image(path_to_model: Path, image_name: str, hotkey: str):
     os.chdir(cwd)
 
 
+def remove_existing_container(container_name: str):
+    """Remove a container if it exists.
+
+    Arguments:
+        container_name (str): name of the container to remove
+    """
+    try:
+        subprocess.check_output(f"sudo docker rm -f {container_name}", shell=True)
+    except subprocess.CalledProcessError:
+        # Container doesn't exist, which is fine
+        pass
+
+
 def main(path_to_model: Path, image_name: str, hotkey: str):
     """Deploy function.
 
@@ -102,18 +116,20 @@ def main(path_to_model: Path, image_name: str, hotkey: str):
     try:
         with open("./url.txt", mode="w", encoding="utf-8") as file:
             file.write("http://localhost:5000")
+        
+        # Remove existing container if it exists
+        remove_existing_container("miner")
+        
+        # Launch container detached with restart policy
         subprocess.check_output(
-            f"sudo docker run --network=host -p 5000:5000 -e MINER_HOTKEY={hotkey} {image_name} -d", 
+            f"sudo docker run -d --network=host --name miner --restart always -p 5000:5000 -e MINER_HOTKEY={hotkey} {image_name}",
             shell=True
-        )
+        ).strip().decode('utf-8')
+        print("Docker container 'miner' launched successfully. It will persist and auto-restart even after this script ends.")
+        
     except KeyboardInterrupt:
-        message = "Terminate container? (y/n) "
-        shutdown_instance = input(message).lower()
-        while shutdown_instance not in {"no", "n", "yes", "y"}:
-            shutdown_instance = input(message).lower()
-        if shutdown_instance in {"y", "yes"}:
-            stop_container(image_name=image_name)
-            delete_image(image_name=image_name)
+        print("\nScript interrupted. The Docker container 'miner' will continue running.")
+        print("To stop it later, use: sudo docker stop miner")
         sys.exit(0)
 
 

@@ -155,9 +155,6 @@ class EpistulaVerifier:
 
     async def verify_stake(self, hotkey: str) -> tuple[bool, float, str]:
         """Verify stake for a hotkey asynchronously."""
-        # Disabled stake verification - accept all
-        return True, 0, ""
-        
         current_time = time.time()
         
         # Check cache first
