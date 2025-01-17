@@ -38,6 +38,7 @@ def main():
         torch.manual_seed(42)  # For reproducibility
         for layer in model.features:
             if isinstance(layer, QuantConv2d):
+                print("allo??")
                 #torch.nn.init.xavier_uniform_(layer.weight)
                 torch.nn.init.kaiming_uniform_(layer.weight, a=math.sqrt(5))
             elif isinstance(layer, BatchNorm2d):
@@ -61,7 +62,7 @@ def main():
     with torch.no_grad():
         output = model(dummy_input)
         assert dummy_input.shape == output.shape
-        print(output.min(), output.max())
+        print(output)
     
     IMAGE_TRANSFORM = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]

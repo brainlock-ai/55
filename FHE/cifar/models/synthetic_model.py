@@ -41,7 +41,7 @@ class SyntheticCNV(Module):
             QuantIdentity(  # for Q1.7 input format
                 act_quant=CommonActQuant,
                 return_quant_tensor=True,
-                bit_width=in_bit_width,
+                bit_width=weight_bit_width,
                 min_val=-1.0,
                 max_val=1.0 - 2.0 ** (-7),
                 narrow_range=False,
