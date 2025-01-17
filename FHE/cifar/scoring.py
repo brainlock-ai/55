@@ -136,7 +136,7 @@ class SimplifiedReward:
                     SELECT 
                         (stats_json->>'average_inference_per_second')::float as average_inference_per_second,
                         score,
-                        (stats_json->>'average_cosine_similarity')::boolean as average_cosine_similarity
+                        (stats_json->>'average_cosine_similarity')::float as average_cosine_similarity
                     FROM last_40_entries
                 )
                 SELECT 
@@ -156,7 +156,7 @@ class SimplifiedReward:
             stats = {
                 "current_score": float(current_score),
                 "average_inference_per_second": float(average_inference_per_second),
-                "average_cosine_similarity": bool(average_cosine_similarity),
+                "average_cosine_similarity": float(average_cosine_similarity),
                 "response_time_stats": (
                     float(result.rt_mean if result.rt_mean is not None else average_inference_per_second),
                     float(result.rt_median if result.rt_median is not None else average_inference_per_second),

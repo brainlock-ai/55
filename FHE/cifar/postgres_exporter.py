@@ -140,7 +140,7 @@ class PostgresExporter:
                             hotkey,
                             (stats_json->>'average_inference_per_second')::float as latest_response_time,
                             score as latest_score,
-                            (stats_json->>'average_cosine_similarity')::boolean as latest_predictions_match
+                            (stats_json->>'average_cosine_similarity')::float as latest_predictions_match
                         FROM recent_records
                         WHERE rn = 1
                     )
