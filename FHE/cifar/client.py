@@ -27,7 +27,7 @@ import traceback
 import numpy as np
 import bittensor as bt
 from pathlib import Path
-from models import cnv_2w2a
+from models import synthetic_cnv_2w2a
 from epistula import EpistulaAuth
 from scoring import SimplifiedReward
 from torchvision import datasets, transforms
@@ -105,7 +105,7 @@ class EpistulaClient:
         try:
             print(" model...")
             # Initialize model
-            self.model = cnv_2w2a(False)
+            self.model = synthetic_cnv_2w2a(False)
             
             # Determine device
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
