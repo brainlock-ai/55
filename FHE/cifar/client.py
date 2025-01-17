@@ -397,8 +397,8 @@ class EpistulaClient:
             # 3. Convert to uint8
             scaled_input = scaled_input.astype(np.uint8)
 
-            print(f"clear_input dtype: {scaled_input.dtype}")
-            print(f"clear_input min/max: {scaled_input.min()}/{scaled_input.max()}")
+            print(f"scaled_input dtype: {scaled_input.dtype}")
+            print(f"scaled_input min/max: {scaled_input.min()}/{scaled_input.max()}")
             print(f"unique values: {np.unique(scaled_input)}")
 
             encrypted_input = self.fhe_client.quantize_encrypt_serialize(scaled_input)
