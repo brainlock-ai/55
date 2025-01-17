@@ -444,7 +444,7 @@ class EpistulaClient:
             for i, chunk_stat in enumerate(chunk_stats):
                 with torch.no_grad():
                     if i == 0:
-                        chunk_simulated_output = self.fhe_client.run(original_input)
+                        chunk_simulated_output = self.fhe_client.run(scaled_input)
                     else:
                         previous_chunk_result = chunk_stats[i - 1]["result"]
                         chunk_simulated_output = self.fhe_client.run(previous_chunk_result)
