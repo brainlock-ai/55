@@ -388,7 +388,14 @@ class EpistulaClient:
             print(f"clear_input min/max: {clear_input.min()}/{clear_input.max()}")
             print(f"unique values: {np.unique(clear_input)}")
 
-            clear_input = clear_input.astype(np.int8)
+            # 1. Multiply data by 255 to spread [0,1] float to [0,255] integer range.
+            scaled_input = (clear_input * 255.0).round()  # or use .astype(np.uint8) after
+
+            # 2. Clip values just in case of small floating rounding above 255
+            scaled_input = np.clip(scaled_input, 0, 255)
+
+            # 3. Convert to uint8
+            scaled_input = scaled_input.astype(np.uint8)
 
             print(f"clear_input dtype: {clear_input.dtype}")
             print(f"clear_input min/max: {clear_input.min()}/{clear_input.max()}")
