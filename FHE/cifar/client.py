@@ -411,7 +411,7 @@ class EpistulaClient:
                 chunk_stats.append({
                     "result": remote_result,
                     "timestamp": chunk_reception_time,
-                    "inference_time": previous_chunk_reception_time - chunk_reception_time,
+                    "inference_time": chunk_reception_time - previous_chunk_reception_time,
                 })
                 previous_chunk_reception_time = chunk_reception_time
 
@@ -435,15 +435,10 @@ class EpistulaClient:
 
             average_cosine_similarity = total_score / len(chunk_stats)
             
-            # Times for inferences (one chunk == one inference, if that's your assumption)
-            inference_times = [cs["inference_time"] for cs in chunk_stats]
-
-            end_inference_time = inference_times[-1]
-
-            # Total time from request-sent to last inference
-            total_time = end_inference_time - start_send_message_time
-
-            # "inferences (or models) per second"
+            # Calculate total time from first to last inference
+            total_time = chunk_stats[-1]["timestamp"] - start_send_message_time
+            
+            # Calculate average inference time
             num_inferences = len(chunk_stats)  # If each chunk is a single inference
             average_inference_per_second = num_inferences / total_time if total_time > 0 else 0.0
 
@@ -452,7 +447,7 @@ class EpistulaClient:
             if num_inferences >= 5:
                 twenty_percent_index = math.ceil(num_inferences * 0.20)
                 time_to_twentieth_percent = (
-                    inference_times[twenty_percent_index] - start_send_message_time
+                    chunk_stats[twenty_percent_index]["timestamp"] - start_send_message_time
                 )
 
                 # If the first 20% of the inferences arrived after 70% of total time,

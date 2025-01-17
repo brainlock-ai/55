@@ -417,7 +417,7 @@ class Validator:
                             is_valid = (
                                 isinstance(score, (int, float)) and  # Must have a numeric score
                                 isinstance(stats, dict) and  # Must have stats dictionary
-                                isinstance(average_cosine_similarity, bool) and  # Must have boolean average_cosine_similarity
+                                isinstance(average_cosine_similarity, float) and  # Must have float average_cosine_similarity
                                 duration > 0  # Must have non-zero duration
                             )
                             
@@ -445,7 +445,7 @@ class Validator:
                             #    if duration <= 0:
                             #        logger.warning(f"Skipping record for miner {uid} due to zero/negative duration: {duration}")
                             #    else:
-                            #        logger.warning(f"Invalid response format from miner {uid}. Missing or invalid fields. Required: score (number), stats (dict), average_cosine_similarity (bool). Got: score={type(score)}, stats={type(stats)}, average_cosine_similarity={type(average_cosine_similarity)}")
+                            #        logger.warning(f"Invalid response format from miner {uid}. Missing or invalid fields. Required: score (number), stats (dict), average_cosine_similarity (float). Got: score={type(score)}, stats={type(stats)}, average_cosine_similarity={type(average_cosine_similarity)}")
                             
                         except Exception as db_error:
                             logger.error(f"Error recording validation in database for miner {uid}: {str(db_error)}")

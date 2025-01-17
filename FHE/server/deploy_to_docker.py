@@ -102,10 +102,11 @@ def main(path_to_model: Path, image_name: str, hotkey: str):
     try:
         with open("./url.txt", mode="w", encoding="utf-8") as file:
             file.write("http://localhost:5000")
-        subprocess.check_output(
-            f"sudo docker run --restart unless-stopped --network=host -p 5000:5000 -e MINER_HOTKEY={hotkey} {image_name} -d", 
+        container_id = subprocess.check_output(
+            f"sudo docker run -d --network=host --name miner --restart unless-stopped -p 5000:5000 -e MINER_HOTKEY={hotkey} {image_name} -d", 
             shell=True
-        )
+        ).strip().decode('utf-8')
+        subprocess.check_call(f"sudo docker logs -f {container_id}", shell=True)
     except KeyboardInterrupt:
         message = "Terminate container? (y/n) "
         shutdown_instance = input(message).lower()
