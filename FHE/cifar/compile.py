@@ -1,5 +1,6 @@
 """Load torch model, compiles it to FHE and exports it"""
 
+import math
 import sys
 import time
 from pathlib import Path
@@ -37,7 +38,8 @@ def main():
         torch.manual_seed(42)  # For reproducibility
         for layer in model.features:
             if isinstance(layer, QuantConv2d):
-                torch.nn.init.xavier_uniform_(layer.weight)
+                #torch.nn.init.xavier_uniform_(layer.weight)
+                torch.nn.init.kaiming_uniform_(layer.weight, a=math.sqrt(5))
             elif isinstance(layer, BatchNorm2d):
                 torch.nn.init.constant_(layer.weight, 1.0)
                 torch.nn.init.constant_(layer.bias, 0.0)
@@ -59,6 +61,7 @@ def main():
     with torch.no_grad():
         output = model(dummy_input)
         assert dummy_input.shape == output.shape
+        print(output.min(), output.max())
     
     IMAGE_TRANSFORM = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]

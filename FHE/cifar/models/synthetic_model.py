@@ -21,6 +21,7 @@
 # SOFTWARE.
 # Original file can be found at https://github.com/Xilinx/brevitas/blob/8c3d9de0113528cf6693c6474a13d802a66682c6/src/brevitas_examples/bnn_pynq/models/CNV.py
 
+import math
 import torch
 from brevitas.core.restrict_val import RestrictValueType
 from brevitas.nn import QuantConv2d, QuantIdentity
@@ -28,13 +29,6 @@ from torch.nn import AvgPool2d, BatchNorm2d, Module, ModuleList
 
 from .common import CommonActQuant, CommonWeightQuant
 
-
-CNV_OUT_CH_POOL = [(64, False), (64, True), (128, False), (128, True), (256, False), (256, False)]
-INTERMEDIATE_FC_FEATURES = [(256, 512), (512, 512)]
-LAST_FC_IN_FEATURES = 512
-LAST_FC_PER_OUT_CH_SCALING = False
-POOL_SIZE = 2
-KERNEL_SIZE = 3
 
 class SyntheticCNV(Module):
     def __init__(self, weight_bit_width, act_bit_width, in_bit_width, in_ch=256):
@@ -58,7 +52,8 @@ class SyntheticCNV(Module):
         # Quantized Convolutional Layer
         self.features.append(
             QuantConv2d(
-                kernel_size=KERNEL_SIZE,
+                kernel_size=3,
+                bit_width=in_bit_width,
                 stride=1,
                 padding=1,
                 in_channels=in_ch,
@@ -90,8 +85,11 @@ class SyntheticCNV(Module):
                 mod.weight.data.clamp_(min_val, max_val)
 
     def forward(self, x):
-        for mod in self.features:
+        for idx, mod in enumerate(self.features):
+            if isinstance(mod, QuantConv2d):
+                print(f"Conv2d weights (layer {idx}): {mod.weight}")
             x = mod(x)
+            print(f"Output of layer {idx}: {x}")
         return x
 
 
