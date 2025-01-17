@@ -103,7 +103,7 @@ def main(path_to_model: Path, image_name: str, hotkey: str):
         with open("./url.txt", mode="w", encoding="utf-8") as file:
             file.write("http://localhost:5000")
         subprocess.check_output(
-            f"sudo docker run --network=host -p 5000:5000 -e MINER_HOTKEY={hotkey} {image_name} -d", 
+            f"sudo docker run --restart unless-stopped --network=host -p 5000:5000 -e MINER_HOTKEY={hotkey} {image_name} -d", 
             shell=True
         )
     except KeyboardInterrupt:
