@@ -412,7 +412,7 @@ async def process_submodel(model: FHEModelServer, input_data: bytes, key: bytes,
         yield output  # Send the actual data
 
         # The output of this execution becomes the input for the next execution
-        current_input = output_data
+        current_input = output
     
     # Log total time
     total_time = timer.end("total")
