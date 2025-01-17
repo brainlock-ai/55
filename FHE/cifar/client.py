@@ -365,7 +365,7 @@ class EpistulaClient:
             # Initialize FHE client
             self.fhe_client = FHEModelClient(path_dir=f"./{self.hotkey}", key_dir="./keys")
 
-            uid = self.upload_evaluation_keys()
+            uid = await self.upload_evaluation_keys()
 
             # Select image (random if not specified)
             if image_index is None:
