@@ -392,10 +392,10 @@ class EpistulaClient:
             scaled_input = (clear_input * 255.0).round()  # or use .astype(np.uint8) after
 
             # 2. Clip values just in case of small floating rounding above 255
-            scaled_input = np.clip(scaled_input, 0, 255)
+            scaled_input = np.clip(scaled_input, 0, 255) - 128
 
             # 3. Convert to uint8
-            scaled_input = scaled_input.astype(np.uint8)
+            scaled_input = scaled_input.astype(np.int8)
 
             print(f"scaled_input dtype: {scaled_input.dtype}")
             print(f"scaled_input min/max: {scaled_input.min()}/{scaled_input.max()}")
